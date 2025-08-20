@@ -7,8 +7,7 @@ const DashboardPage = () => {
     name: '',
     email: '',
     course: '',
-    student_number: '',
-    tor_verified: false as boolean
+    student_number: ''
   });
 
   useEffect(() => {
@@ -17,11 +16,97 @@ const DashboardPage = () => {
       try {
         const parsed = JSON.parse(stored);
         setUser(parsed);
+        
+        // Fetch dynamic data if user has email
+        if (parsed.email) {
+          fetchRecommendedSkills(parsed.email);
+          fetchHiringCompanies(parsed.email);
+          fetchUserArchetype(parsed.email);
+          checkUserTranscript(parsed.email);
+        }
       } catch {
         // ignore parse errors
       }
     }
   }, []);
+
+  const fetchRecommendedSkills = async (email: string) => {
+    setSkillsLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/analysis/recommended-skills?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setRecommendedSkills(data.skills || []);
+      }
+    } catch (error) {
+      console.error('Error fetching recommended skills:', error);
+    } finally {
+      setSkillsLoading(false);
+    }
+  };
+
+  const fetchHiringCompanies = async (email: string) => {
+    setCompaniesLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/analysis/companies-for-user?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setHiringCompanies(data.companies || []);
+      }
+    } catch (error) {
+      console.error('Error fetching hiring companies:', error);
+    } finally {
+      setCompaniesLoading(false);
+    }
+  };
+
+  const fetchUserArchetype = async (email: string) => {
+    setArchetypeLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.primary_archetype) {
+          setUserArchetype({
+            primary: data.primary_archetype,
+            analyzedAt: data.archetype_analyzed_at,
+            hasAnalysis: !!data.tor_notes,
+            archetype_sage_percentage: data.archetype_sage_percentage || 0,
+            archetype_creator_percentage: data.archetype_creator_percentage || 0,
+            archetype_ruler_percentage: data.archetype_ruler_percentage || 0,
+            archetype_hero_percentage: data.archetype_hero_percentage || 0,
+            archetype_explorer_percentage: data.archetype_explorer_percentage || 0,
+            archetype_rebel_percentage: data.archetype_rebel_percentage || 0,
+            archetype_lover_percentage: data.archetype_lover_percentage || 0,
+            archetype_magician_percentage: data.archetype_magician_percentage || 0,
+            archetype_caregiver_percentage: data.archetype_caregiver_percentage || 0,
+            archetype_innocent_percentage: data.archetype_innocent_percentage || 0,
+            archetype_everyman_percentage: data.archetype_everyman_percentage || 0,
+            archetype_jester_percentage: data.archetype_jester_percentage || 0
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user archetype:', error);
+    } finally {
+      setArchetypeLoading(false);
+    }
+  };
+
+  const checkUserTranscript = async (email: string) => {
+    setTranscriptLoading(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setHasTranscript(!!data.tor_url || !!data.tor_notes);
+      }
+    } catch (error) {
+      console.error('Error checking user transcript:', error);
+    } finally {
+      setTranscriptLoading(false);
+    }
+  };
 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [activeSection, setActiveSection] = useState('feed');
@@ -57,7 +142,22 @@ const DashboardPage = () => {
   const [jobsOffset, setJobsOffset] = useState(0);
   const [jobsHasMore, setJobsHasMore] = useState(true);
   const [jobsLoading, setJobsLoading] = useState(false);
+  const [scrapingJobs, setScrapingJobs] = useState(false);
   const observerRef = useRef<HTMLDivElement | null>(null);
+
+  // Dynamic data states
+  const [recommendedSkills, setRecommendedSkills] = useState<any[]>([]);
+  const [hiringCompanies, setHiringCompanies] = useState<any[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
+  
+  // User archetype data
+  const [userArchetype, setUserArchetype] = useState<any>(null);
+  const [archetypeLoading, setArchetypeLoading] = useState(false);
+  
+  // User transcript status
+  const [hasTranscript, setHasTranscript] = useState(false);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     if (jobsLoading || !jobsHasMore) return;
@@ -75,6 +175,34 @@ const DashboardPage = () => {
       setJobsLoading(false);
     }
   }, [jobsLoading, jobsHasMore, jobsOffset]);
+
+  const scrapeJobs = async () => {
+    setScrapingJobs(true);
+    try {
+      const res = await fetch('http://localhost:5000/api/jobs/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_email: user.email, // Use user's email for archetype-based scraping
+          location: 'Philippines',
+          sources: ['google', 'linkedin', 'indeed'],
+          jobs_per_query: 5
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Refresh jobs list
+        setJobs([]);
+        setJobsOffset(0);
+        setJobsHasMore(true);
+        await fetchJobs();
+      }
+    } catch (e) {
+      console.error('Failed to scrape jobs:', e);
+    } finally {
+      setScrapingJobs(false);
+    }
+  };
 
   useEffect(() => {
     fetchJobs();
@@ -131,7 +259,7 @@ const DashboardPage = () => {
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Navigation */}
-      <nav className="border-b border-gray-800">
+      <nav className="sticky top-0 z-50 bg-black border-b border-gray-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -210,7 +338,7 @@ const DashboardPage = () => {
         <div className="grid lg:grid-cols-4 gap-6">
           {/* Left Sidebar - Profile Card */}
           <div className="lg:col-span-1">
-            <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden sticky top-6">
+            <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden sticky top-24 h-fit">
               {/* Profile Header */}
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 h-16"></div>
               <div className="p-6 -mt-8">
@@ -222,16 +350,30 @@ const DashboardPage = () => {
                 <h2 className="text-lg font-bold mb-1">{user.name || 'User'}</h2>
                 <p className="text-gray-400 text-sm mb-2">{user.course || 'Course'}{user.student_number ? ` • ${user.student_number}` : ''}</p>
                 <p className="text-gray-400 text-sm mb-1">{user.email}</p>
-                <p className={`text-xs ${user.tor_verified ? 'text-green-400' : 'text-yellow-400'}`}>TOR Verified: {user.tor_verified ? 'Yes' : 'Pending'}</p>
+                {/* TOR verification removed */}
                 
                 {/* Quick Stats */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2">
                     <span className="text-gray-400 text-sm">Archetype</span>
-                    <span className={`font-medium ${userProgress.hasArchetype ? 'text-green-400' : 'text-yellow-400'}`}>
-                      {userProgress.hasArchetype ? userProgress.archetype : 'Pending'}
+                    {archetypeLoading ? (
+                      <div className="h-4 bg-gray-700 rounded animate-pulse w-16"></div>
+                    ) : userArchetype ? (
+                      <span className="font-medium text-green-400">
+                        {userArchetype.primary.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-yellow-400">Pending</span>
+                    )}
+                  </div>
+                  {userArchetype && userArchetype.analyzedAt && (
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-gray-400 text-sm">Analyzed</span>
+                      <span className="text-gray-300 text-xs">
+                        {new Date(userArchetype.analyzedAt).toLocaleDateString()}
                     </span>
                   </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -270,6 +412,13 @@ const DashboardPage = () => {
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold">Recommended Jobs</h3>
+                <button
+                  onClick={scrapeJobs}
+                  disabled={scrapingJobs}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {scrapingJobs ? 'Scraping...' : 'Refresh Jobs'}
+                </button>
               </div>
               <div className="space-y-3">
                 {jobs.map(renderJobCard)}
@@ -289,64 +438,93 @@ const DashboardPage = () => {
           </div>
 
           {/* Right Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-1 space-y-6 sticky top-24 h-fit">
 
 
-            {/* Trending Skills */}
+                        {/* Your Archetypes */}
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-              <h3 className="font-bold mb-4">Trending Skills in Tech</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">React.js</span>
-                  <span className="text-green-400 text-xs">+15%</span>
+              <h3 className="font-bold mb-4">Your Archetypes</h3>
+              {archetypeLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="flex justify-between items-center">
+                      <div className="h-4 bg-gray-700 rounded animate-pulse w-24"></div>
+                      <div className="h-4 bg-gray-700 rounded animate-pulse w-12"></div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Python</span>
-                  <span className="text-green-400 text-xs">+12%</span>
+              ) : userArchetype ? (
+                <div className="space-y-3">
+                  {Object.entries({
+                    'The Sage': userArchetype.archetype_sage_percentage || 0,
+                    'The Creator': userArchetype.archetype_creator_percentage || 0,
+                    'The Ruler': userArchetype.archetype_ruler_percentage || 0,
+                    'The Hero': userArchetype.archetype_hero_percentage || 0,
+                    'The Explorer': userArchetype.archetype_explorer_percentage || 0,
+                    'The Rebel': userArchetype.archetype_rebel_percentage || 0,
+                    'The Lover': userArchetype.archetype_lover_percentage || 0,
+                    'The Magician': userArchetype.archetype_magician_percentage || 0,
+                    'The Caregiver': userArchetype.archetype_caregiver_percentage || 0,
+                    'The Innocent': userArchetype.archetype_innocent_percentage || 0,
+                    'The Everyman': userArchetype.archetype_everyman_percentage || 0,
+                    'The Jester': userArchetype.archetype_jester_percentage || 0
+                  })
+                  .sort(([,a], [,b]) => (b as number) - (a as number))
+                  .slice(0, 6)
+                  .map(([archetype, percentage]) => (
+                    <div key={archetype} className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">{archetype}</span>
+                      <span className={`text-xs ${percentage > 20 ? 'text-green-400' : percentage > 10 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                        {percentage}%
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Cloud Computing</span>
-                  <span className="text-green-400 text-xs">+20%</span>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-gray-400 text-sm">Upload your transcript to see your archetype analysis</p>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300 text-sm">Data Science</span>
-                  <span className="text-green-400 text-xs">+18%</span>
-                </div>
-              </div>
+              )}
             </div>
 
-            {/* Recent Companies */}
+            {/* Companies Hiring */}
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-              <h3 className="font-bold mb-4">Companies Hiring</h3>
+              <h3 className="font-bold mb-4">Companies Hiring for You</h3>
+              {companiesLoading ? (
               <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">AC</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Accenture</p>
-                    <p className="text-xs text-gray-400">5 new positions</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-red-500 rounded flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">GC</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">Globe Telecom</p>
-                    <p className="text-xs text-gray-400">3 new positions</p>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-gray-700 rounded animate-pulse"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-700 rounded animate-pulse w-24 mb-1"></div>
+                        <div className="h-3 bg-gray-700 rounded animate-pulse w-20"></div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-green-500 rounded flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">GR</span>
+                  ))}
+                </div>
+              ) : hiringCompanies.length > 0 ? (
+                <div className="space-y-3">
+                  {hiringCompanies.map((company, index) => (
+                    <div key={index} className="flex items-center space-x-3">
+                      <div className={`w-8 h-8 rounded flex items-center justify-center ${
+                        index === 0 ? 'bg-blue-500' : index === 1 ? 'bg-red-500' : 'bg-green-500'
+                      }`}>
+                        <span className="text-white text-xs font-bold">
+                          {company.name.split(' ').map((word: string) => word[0]).join('').toUpperCase()}
+                        </span>
                   </div>
                   <div>
-                    <p className="text-sm font-medium">Grab Philippines</p>
-                    <p className="text-xs text-gray-400">2 new positions</p>
+                        <p className="text-sm font-medium">{company.name}</p>
+                        <p className="text-xs text-gray-400">{company.job_count} new position{company.job_count !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
-              </div>
+                  ))}
+                  </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-gray-400 text-sm">No relevant companies found. Try refreshing job data.</p>
+                  </div>
+              )}
             </div>
           </div>
         </div>
@@ -423,7 +601,7 @@ const DashboardPage = () => {
                 {/* Header */}
                 <div className="border-b-2 border-gray-200 pb-6 mb-6">
                   <h1 className="text-3xl font-bold text-gray-900">{user.name}</h1>
-                  <p className="text-lg text-gray-600">{user.course} • {user.year}</p>
+                  <p className="text-lg text-gray-600">{user.course}</p>
                   <p className="text-gray-600">{user.email}</p>
                 </div>
 
@@ -519,7 +697,7 @@ const DashboardPage = () => {
                       <label className="block text-sm font-medium text-gray-300 mb-2">Year Level</label>
                       <input 
                         type="text" 
-                        value={user.year}
+                        value="N/A"
                         className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white"
                         readOnly
                       />

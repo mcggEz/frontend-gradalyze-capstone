@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const AnalysisPage = () => {
+  const navigate = useNavigate();
   const [user, setUser] = useState({
     name: '',
     email: '',
@@ -15,14 +16,53 @@ const AnalysisPage = () => {
       try {
         const parsed = JSON.parse(stored);
         setUser(parsed);
+        
+        // Check if user already has a transcript
+        if (parsed.email) {
+          checkExistingTranscript(parsed.email);
+        }
       } catch {
         // ignore
       }
     }
   }, []);
 
+  const checkExistingTranscript = async (email: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const userData = await response.json();
+        
+        // Check for existing transcript
+        if (userData.tor_url || userData.tor_notes) {
+          setExistingTranscript({
+            hasFile: !!userData.tor_url,
+            hasAnalysis: !!userData.tor_notes,
+            uploadedAt: userData.tor_uploaded_at,
+            analyzedAt: userData.archetype_analyzed_at,
+            primaryArchetype: userData.primary_archetype
+          });
+        }
+        
+        // Check for existing certificates
+        if (userData.certificate_paths && Array.isArray(userData.certificate_paths) && userData.certificate_paths.length > 0) {
+          setExistingCertificates(userData.certificate_paths.map((path: string, index: number) => ({
+            id: index,
+            path: path,
+            name: path.split('/').pop() || `Certificate ${index + 1}`,
+            uploadedAt: userData.certificate_uploaded_at || new Date().toISOString()
+          })));
+        }
+      }
+    } catch (error) {
+      console.error('Error checking existing transcript:', error);
+    } finally {
+      setIsCheckingTranscript(false);
+    }
+  };
+
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [currentStep, setCurrentStep] = useState<'upload' | 'validation' | 'admin-review' | 'processing' | 'results'>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'validation' | 'processing'>('upload');
   const [uploadedFiles, setUploadedFiles] = useState<{transcript: File | null, certificates: File[]}>({
     transcript: null,
     certificates: []
@@ -32,11 +72,14 @@ const AnalysisPage = () => {
   const [archetype, setArchetype] = useState<any>(null);
   const [careerPaths, setCareerPaths] = useState<any[]>([]);
   const [companies, setCompanies] = useState<any[]>([]);
+  const [existingTranscript, setExistingTranscript] = useState<any>(null);
+  const [existingCertificates, setExistingCertificates] = useState<any[]>([]);
+  const [isCheckingTranscript, setIsCheckingTranscript] = useState(true);
 
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Navigation */}
-      <nav className="border-b border-gray-800">
+      <nav className="sticky top-0 z-50 bg-black border-b border-gray-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -123,33 +166,21 @@ const AnalysisPage = () => {
         {/* Progress Indicator */}
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-6 mb-6">
           <div className="flex items-center justify-between">
-            <div className={`flex items-center space-x-2 ${currentStep === 'upload' ? 'text-blue-400' : currentStep === 'validation' || currentStep === 'admin-review' || currentStep === 'processing' || currentStep === 'results' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'upload' ? 'bg-blue-500' : currentStep === 'validation' || currentStep === 'admin-review' || currentStep === 'processing' || currentStep === 'results' ? 'bg-green-500' : 'bg-gray-600'}`}>
+            <div className={`flex items-center space-x-2 ${currentStep === 'upload' ? 'text-blue-400' : currentStep === 'validation' || currentStep === 'processing' ? 'text-green-400' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'upload' ? 'bg-blue-500' : currentStep === 'validation' || currentStep === 'processing' ? 'bg-green-500' : 'bg-gray-600'}`}>
                 <span className="text-sm font-bold">1</span>
               </div>
               <span className="font-medium">Upload</span>
             </div>
-            <div className={`flex items-center space-x-2 ${currentStep === 'validation' ? 'text-blue-400' : currentStep === 'admin-review' || currentStep === 'processing' || currentStep === 'results' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'validation' ? 'bg-blue-500' : currentStep === 'admin-review' || currentStep === 'processing' || currentStep === 'results' ? 'bg-green-500' : 'bg-gray-600'}`}>
+            <div className={`flex items-center space-x-2 ${currentStep === 'validation' ? 'text-blue-400' : currentStep === 'processing' ? 'text-green-400' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'validation' ? 'bg-blue-500' : currentStep === 'processing' ? 'bg-green-500' : 'bg-gray-600'}`}>
                 <span className="text-sm font-bold">2</span>
               </div>
               <span className="font-medium">Validate</span>
             </div>
-            <div className={`flex items-center space-x-2 ${currentStep === 'admin-review' ? 'text-blue-400' : currentStep === 'processing' || currentStep === 'results' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'admin-review' ? 'bg-blue-500' : currentStep === 'processing' || currentStep === 'results' ? 'bg-green-500' : 'bg-gray-600'}`}>
+            <div className={`flex items-center space-x-2 ${currentStep === 'processing' ? 'text-blue-400' : 'text-gray-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'processing' ? 'bg-blue-500' : 'bg-gray-600'}`}>
                 <span className="text-sm font-bold">3</span>
-              </div>
-              <span className="font-medium">Review</span>
-            </div>
-            <div className={`flex items-center space-x-2 ${currentStep === 'processing' ? 'text-blue-400' : currentStep === 'results' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'processing' ? 'bg-blue-500' : currentStep === 'results' ? 'bg-green-500' : 'bg-gray-600'}`}>
-                <span className="text-sm font-bold">4</span>
-              </div>
-              <span className="font-medium">Process</span>
-            </div>
-            <div className={`flex items-center space-x-2 ${currentStep === 'results' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'results' ? 'bg-green-500' : 'bg-gray-600'}`}>
-                <span className="text-sm font-bold">5</span>
               </div>
               <span className="font-medium">Results</span>
             </div>
@@ -160,8 +191,71 @@ const AnalysisPage = () => {
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
           <h2 className="text-2xl font-bold mb-6">📊 Academic Analysis</h2>
           
+          {/* Loading State */}
+          {isCheckingTranscript && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse">
+                <svg className="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Checking existing analysis...</h3>
+              <p className="text-gray-400">Looking for your previous transcript and analysis results.</p>
+            </div>
+          )}
+
+          {/* Existing Transcript Found */}
+          {!isCheckingTranscript && existingTranscript && (
+            <div className="mb-8 bg-blue-900/20 border border-blue-700 rounded-lg p-6">
+              <div className="flex items-start space-x-4">
+                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-blue-300 mb-2">Existing Analysis Found</h3>
+                                    <div className="space-y-2 text-sm text-gray-300">
+                    {existingTranscript.hasFile && (
+                      <p>📄 <strong>Transcript:</strong> Uploaded on {new Date(existingTranscript.uploadedAt).toLocaleDateString()}</p>
+                    )}
+                    {existingTranscript.hasAnalysis && (
+                      <p>🧠 <strong>Analysis:</strong> Completed on {new Date(existingTranscript.analyzedAt).toLocaleDateString()}</p>
+                    )}
+                    {existingTranscript.primaryArchetype && (
+                      <p>🎭 <strong>Primary Archetype:</strong> {existingTranscript.primaryArchetype.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</p>
+                    )}
+                    {existingCertificates.length > 0 && (
+                      <p>🏆 <strong>Certificates:</strong> {existingCertificates.length} certificate(s) uploaded</p>
+                    )}
+                  </div>
+                  <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={() => {
+                        // Redirect to dossier page to view analysis results
+                        navigate('/dossier');
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                    >
+                      📊 View Previous Analysis
+                    </button>
+                    <button
+                      onClick={() => {
+                        setExistingTranscript(null);
+                        setCurrentStep('upload');
+                      }}
+                      className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                    >
+                      🔄 Upload New Transcript
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Step 1: Upload */}
-          {currentStep === 'upload' && (
+          {!isCheckingTranscript && (!existingTranscript || currentStep === 'upload') && (
             <UploadStep 
               uploadedFiles={uploadedFiles}
               onFilesUploaded={(files) => {
@@ -169,6 +263,8 @@ const AnalysisPage = () => {
               }}
               onOcrComplete={(grades) => setExtractedGrades(grades)}
               onProceedToValidation={() => setCurrentStep('validation')}
+              existingTranscript={existingTranscript}
+              existingCertificates={existingCertificates}
             />
           )}
 
@@ -179,38 +275,10 @@ const AnalysisPage = () => {
               onValidationConfirmed={(confirmedGrades) => {
                 setExtractedGrades(confirmedGrades);
                 setValidationStatus('user-confirmed');
-                setCurrentStep('admin-review');
-              }}
-            />
-          )}
-
-          {/* Step 3: Admin Review */}
-          {currentStep === 'admin-review' && (
-            <AdminReviewStep 
-              extractedGrades={extractedGrades}
-              validationStatus={validationStatus}
-              onAdminApproval={() => {
-                setValidationStatus('admin-approved');
                 setCurrentStep('processing');
-                // Simulate processing
+                // Simulate processing and redirect to dossier
                 setTimeout(() => {
-                  setArchetype({
-                    type: 'Analytical Thinker',
-                    description: 'Strong in logical reasoning and systematic problem-solving',
-                    strengths: ['Analytical Skills', 'Problem Solving', 'Technical Excellence'],
-                    score: 8.5
-                  });
-                  setCareerPaths([
-                    { title: 'Software Engineer', match: 92, demand: 'High', salary: '₱45,000 - ₱80,000' },
-                    { title: 'Data Scientist', match: 88, demand: 'High', salary: '₱50,000 - ₱90,000' },
-                    { title: 'System Analyst', match: 85, demand: 'Medium', salary: '₱40,000 - ₱70,000' }
-                  ]);
-                  setCompanies([
-                    { name: 'Accenture Philippines', position: 'Junior Software Developer', posted: '2 days ago', type: 'Full-time' },
-                    { name: 'Concentrix', position: 'Data Analyst', posted: '1 week ago', type: 'Full-time' },
-                    { name: 'IBM Philippines', position: 'System Analyst Trainee', posted: '3 days ago', type: 'Full-time' }
-                  ]);
-                  setCurrentStep('results');
+                  navigate('/dossier');
                 }, 3000);
               }}
             />
@@ -221,14 +289,7 @@ const AnalysisPage = () => {
             <ProcessingStep />
           )}
 
-          {/* Step 5: Results */}
-          {currentStep === 'results' && (
-            <ResultsStep 
-              archetype={archetype}
-              careerPaths={careerPaths}
-              companies={companies}
-            />
-          )}
+
         </div>
       </main>
     </div>
@@ -236,11 +297,13 @@ const AnalysisPage = () => {
 };
 
 // Upload Step Component
-const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedToValidation }: { 
+const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedToValidation, existingTranscript, existingCertificates }: { 
   uploadedFiles: {transcript: File | null, certificates: File[]}, 
   onFilesUploaded: (files: {transcript: File | null, certificates: File[]}) => void,
   onOcrComplete: (grades: any[]) => void,
-  onProceedToValidation: () => void
+  onProceedToValidation: () => void,
+  existingTranscript?: any,
+  existingCertificates?: any[]
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragOver, setDragOver] = useState<'transcript' | 'certificates' | null>(null);
@@ -444,7 +507,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
         setTorUrl(res.tor_url || null);
         setTorStoragePath(res.storage_path || null);
         setIsProcessing(false);
-        setUploadProgress(0);
+          setUploadProgress(0);
         return; // stay on this step until user starts OCR
       } catch (err: any) {
         alert(err.message || 'Upload failed');
@@ -476,6 +539,24 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
 
   return (
     <div className="space-y-8">
+      {/* Existing Data Warning */}
+      {(existingTranscript || (existingCertificates && existingCertificates.length > 0)) && (
+        <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4">
+          <div className="flex items-center space-x-3">
+            <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div>
+              <p className="text-yellow-300 font-medium">Replacing Existing Data</p>
+              <p className="text-yellow-200 text-sm">
+                {existingTranscript && "Uploading a new transcript will replace your previous analysis. "}
+                {existingCertificates && existingCertificates.length > 0 && "Uploading new certificates will add to your existing collection."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isProcessing ? (
         <div className="text-center py-12">
           <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse">
@@ -506,7 +587,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
           {/* Transcript Upload */}
           <div>
             <h4 className="text-lg font-semibold mb-4 flex items-center">
-              📄 Transcript of Records (Required)
+              📄 Transcript of Records
               <span className="ml-2 text-xs bg-red-600 text-white px-2 py-1 rounded">Required</span>
             </h4>
             <div 
@@ -590,9 +671,32 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
           {/* Certificates Upload */}
           <div>
             <h4 className="text-lg font-semibold mb-4 flex items-center">
-              🏆 Certificates & Achievements (Optional)
+              🏆 Certificates & Achievements
               <span className="ml-2 text-xs bg-gray-600 text-white px-2 py-1 rounded">Optional</span>
             </h4>
+            
+            {/* Existing Certificates Display */}
+            {existingCertificates && existingCertificates.length > 0 && (
+              <div className="mb-4 bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-blue-300 mb-3">Existing Certificates ({existingCertificates.length})</h5>
+                <div className="space-y-2">
+                  {existingCertificates.map((cert, index) => (
+                    <div key={cert.id} className="flex items-center justify-between bg-blue-800/20 rounded p-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-blue-300">📄</span>
+                        <span className="text-sm text-blue-200">{cert.name}</span>
+                      </div>
+                      <span className="text-xs text-blue-300">
+                        {new Date(cert.uploadedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-blue-300 mt-2">
+                  New certificates will be added to your existing collection.
+                </p>
+              </div>
+            )}
             <div 
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 ${
                 dragOver === 'certificates' 
@@ -761,101 +865,7 @@ const ValidationStep = ({ extractedGrades, onValidationConfirmed: _onConfirm }: 
   );
 };
 
-// Admin Review Step Component
-const AdminReviewStep = ({ extractedGrades, validationStatus, onAdminApproval }: {
-  extractedGrades: any[],
-  validationStatus: string,
-  onAdminApproval: () => void
-}) => {
-  const [isSimulatingReview, setIsSimulatingReview] = useState(false);
-
-  const handleSimulateApproval = () => {
-    setIsSimulatingReview(true);
-    setTimeout(() => {
-      onAdminApproval();
-    }, 2000);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h3 className="text-xl font-semibold mb-2">👨‍💼 Admin Review</h3>
-        <p className="text-gray-400">Your submission is being reviewed by an administrator.</p>
-      </div>
-
-      {isSimulatingReview ? (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse">
-            <svg className="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-semibold mb-2">Reviewing...</h3>
-          <p className="text-gray-400">Administrator is validating your submission.</p>
-        </div>
-      ) : (
-        <>
-          <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-6">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 bg-yellow-500 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="font-semibold text-yellow-300">Pending Admin Review</h4>
-                <p className="text-yellow-200 text-sm">Status: {validationStatus}</p>
-              </div>
-            </div>
-            <p className="text-gray-300 text-sm">
-              Your grade data has been submitted and is waiting for administrator validation. 
-              This helps ensure accuracy and prevents fraudulent submissions.
-            </p>
-          </div>
-
-          <div className="bg-gray-800 rounded-lg p-6">
-            <h4 className="font-semibold mb-4">Submitted Data Summary</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-blue-400">{extractedGrades.length}</p>
-                <p className="text-sm text-gray-400">Total Subjects</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-green-400">
-                  {(extractedGrades.reduce((sum, grade) => sum + grade.grade, 0) / extractedGrades.length).toFixed(2)}
-                </p>
-                <p className="text-sm text-gray-400">Average Grade</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-purple-400">
-                  {extractedGrades.filter(g => g.category === 'Major').length}
-                </p>
-                <p className="text-sm text-gray-400">Major Subjects</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-orange-400">
-                  {extractedGrades.reduce((sum, grade) => sum + grade.units, 0)}
-                </p>
-                <p className="text-sm text-gray-400">Total Units</p>
-              </div>
-            </div>
-          </div>
-
-          {/* For demo purposes - simulate admin approval */}
-          <div className="text-center">
-            <button
-              onClick={handleSimulateApproval}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
-            >
-              🎭 Simulate Admin Approval (Demo)
-            </button>
-            <p className="text-xs text-gray-500 mt-2">In production, this would be done by an actual administrator</p>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
+// Admin Review flow removed per product change
 
 // Processing Step Component
 const ProcessingStep = () => {

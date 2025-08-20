@@ -7,7 +7,6 @@ import DashboardPage from './pages/DashboardPage'
 import AnalysisPage from './pages/AnalysisPage'
 import DossierPage from './pages/DossierPage'
 import SettingsPage from './pages/SettingsPage'
-import Admin from './admin/Admin'
 
 function App() {
   return (
@@ -20,7 +19,6 @@ function App() {
         <Route path="/analysis" element={<AnalysisPage />} />
         <Route path="/dossier" element={<DossierPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/admin" element={<Admin />} />
       </Routes>
     </Router>
   )
