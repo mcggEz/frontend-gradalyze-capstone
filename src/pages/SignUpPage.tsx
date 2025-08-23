@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../config/api';
 
 const SignUpPage = () => {
   const [formData, setFormData] = useState({
@@ -37,7 +38,7 @@ const SignUpPage = () => {
       return;
     }
     try {
-      const response = await fetch('http://localhost:5000/api/auth/register', {
+      const response = await fetch(getApiUrl('SIGNUP'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../config/api';
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -19,10 +20,8 @@ const DashboardPage = () => {
         
         // Fetch dynamic data if user has email
         if (parsed.email) {
-          fetchRecommendedSkills(parsed.email);
           fetchHiringCompanies(parsed.email);
           fetchUserArchetype(parsed.email);
-          checkUserTranscript(parsed.email);
         }
       } catch {
         // ignore parse errors
@@ -30,25 +29,10 @@ const DashboardPage = () => {
     }
   }, []);
 
-  const fetchRecommendedSkills = async (email: string) => {
-    setSkillsLoading(true);
-    try {
-      const response = await fetch(`http://localhost:5000/api/analysis/recommended-skills?email=${encodeURIComponent(email)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setRecommendedSkills(data.skills || []);
-      }
-    } catch (error) {
-      console.error('Error fetching recommended skills:', error);
-    } finally {
-      setSkillsLoading(false);
-    }
-  };
-
   const fetchHiringCompanies = async (email: string) => {
     setCompaniesLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/analysis/companies-for-user?email=${encodeURIComponent(email)}`);
+      const response = await fetch(`${getApiUrl('COMPANIES_FOR_USER')}?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const data = await response.json();
         setHiringCompanies(data.companies || []);
@@ -63,7 +47,7 @@ const DashboardPage = () => {
   const fetchUserArchetype = async (email: string) => {
     setArchetypeLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(email)}`);
+      const response = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const data = await response.json();
         if (data.primary_archetype) {
@@ -71,18 +55,12 @@ const DashboardPage = () => {
             primary: data.primary_archetype,
             analyzedAt: data.archetype_analyzed_at,
             hasAnalysis: !!data.tor_notes,
-            archetype_sage_percentage: data.archetype_sage_percentage || 0,
-            archetype_creator_percentage: data.archetype_creator_percentage || 0,
-            archetype_ruler_percentage: data.archetype_ruler_percentage || 0,
-            archetype_hero_percentage: data.archetype_hero_percentage || 0,
-            archetype_explorer_percentage: data.archetype_explorer_percentage || 0,
-            archetype_rebel_percentage: data.archetype_rebel_percentage || 0,
-            archetype_lover_percentage: data.archetype_lover_percentage || 0,
-            archetype_magician_percentage: data.archetype_magician_percentage || 0,
-            archetype_caregiver_percentage: data.archetype_caregiver_percentage || 0,
-            archetype_innocent_percentage: data.archetype_innocent_percentage || 0,
-            archetype_everyman_percentage: data.archetype_everyman_percentage || 0,
-            archetype_jester_percentage: data.archetype_jester_percentage || 0
+            archetype_realistic_percentage: data.archetype_realistic_percentage || 0,
+            archetype_investigative_percentage: data.archetype_investigative_percentage || 0,
+            archetype_artistic_percentage: data.archetype_artistic_percentage || 0,
+            archetype_social_percentage: data.archetype_social_percentage || 0,
+            archetype_enterprising_percentage: data.archetype_enterprising_percentage || 0,
+            archetype_conventional_percentage: data.archetype_conventional_percentage || 0
           });
         }
       }
@@ -90,21 +68,6 @@ const DashboardPage = () => {
       console.error('Error fetching user archetype:', error);
     } finally {
       setArchetypeLoading(false);
-    }
-  };
-
-  const checkUserTranscript = async (email: string) => {
-    setTranscriptLoading(true);
-    try {
-      const response = await fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(email)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setHasTranscript(!!data.tor_url || !!data.tor_notes);
-      }
-    } catch (error) {
-      console.error('Error checking user transcript:', error);
-    } finally {
-      setTranscriptLoading(false);
     }
   };
 
@@ -146,24 +109,18 @@ const DashboardPage = () => {
   const observerRef = useRef<HTMLDivElement | null>(null);
 
   // Dynamic data states
-  const [recommendedSkills, setRecommendedSkills] = useState<any[]>([]);
   const [hiringCompanies, setHiringCompanies] = useState<any[]>([]);
-  const [skillsLoading, setSkillsLoading] = useState(false);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   
   // User archetype data
   const [userArchetype, setUserArchetype] = useState<any>(null);
   const [archetypeLoading, setArchetypeLoading] = useState(false);
-  
-  // User transcript status
-  const [hasTranscript, setHasTranscript] = useState(false);
-  const [transcriptLoading, setTranscriptLoading] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     if (jobsLoading || !jobsHasMore) return;
     setJobsLoading(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/jobs/?limit=10&offset=${jobsOffset}`);
+      const res = await fetch(`${getApiUrl('JOBS')}?limit=10&offset=${jobsOffset}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to load jobs');
       setJobs((prev) => [...prev, ...(data.jobs || [])]);
@@ -179,14 +136,22 @@ const DashboardPage = () => {
   const scrapeJobs = async () => {
     setScrapingJobs(true);
     try {
-      const res = await fetch('http://localhost:5000/api/jobs/scrape', {
+      // Only scrape if user has archetype data
+      if (!userArchetype || !userArchetype.hasAnalysis) {
+        alert('Please upload your transcript first to get personalized job recommendations.');
+        setScrapingJobs(false);
+        return;
+      }
+
+      const res = await fetch(getApiUrl('SCRAPE_JOBS'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_email: user.email, // Use user's email for archetype-based scraping
+          user_email: user.email,
           location: 'Philippines',
           sources: ['google', 'linkedin', 'indeed'],
-          jobs_per_query: 5
+          jobs_per_query: 8,
+          archetype_based: true
         })
       });
       const data = await res.json();
@@ -196,6 +161,8 @@ const DashboardPage = () => {
         setJobsOffset(0);
         setJobsHasMore(true);
         await fetchJobs();
+      } else {
+        console.error('Scraping failed:', data.message);
       }
     } catch (e) {
       console.error('Failed to scrape jobs:', e);
@@ -203,10 +170,6 @@ const DashboardPage = () => {
       setScrapingJobs(false);
     }
   };
-
-  useEffect(() => {
-    fetchJobs();
-  }, []);
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -246,15 +209,6 @@ const DashboardPage = () => {
       </a>
     );
   };
-  
-  // User progress state
-  const [userProgress] = useState({
-    hasUploadedToR: false,
-    hasArchetype: false,
-    archetype: null,
-    gpa: null,
-    uploadedDocuments: 0
-  });
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -350,7 +304,6 @@ const DashboardPage = () => {
                 <h2 className="text-lg font-bold mb-1">{user.name || 'User'}</h2>
                 <p className="text-gray-400 text-sm mb-2">{user.course || 'Course'}{user.student_number ? ` • ${user.student_number}` : ''}</p>
                 <p className="text-gray-400 text-sm mb-1">{user.email}</p>
-                {/* TOR verification removed */}
                 
                 {/* Quick Stats */}
                 <div className="space-y-3">
@@ -386,17 +339,17 @@ const DashboardPage = () => {
               <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-6 flex items-center justify-center">
                 <span className="text-2xl">🎓</span>
                 </div>
-              
+             
               <h2 className="text-2xl font-bold mb-2">
                 Welcome back, <span className="text-blue-400">{(user.name || 'User').split(' ')[0]}</span>!
               </h2>
-              
+             
               <p className="text-gray-300 mb-2">{user.course || 'Course'}{user.student_number ? ` • ${user.student_number}` : ''}</p>
-              
+             
               <p className="text-gray-400 mb-8 max-w-md mx-auto">
                 Ready to discover your learning archetype? Upload your transcript to get personalized insights about your academic journey.
               </p>
-              
+             
               <Link 
                 to="/analysis"
                 className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
@@ -414,24 +367,59 @@ const DashboardPage = () => {
                 <h3 className="text-lg font-bold">Recommended Jobs</h3>
                 <button
                   onClick={scrapeJobs}
-                  disabled={scrapingJobs}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={scrapingJobs || !userArchetype || !userArchetype.hasAnalysis}
+                  title={!userArchetype || !userArchetype.hasAnalysis ? 'Upload your transcript first to enable job scraping' : ''}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    scrapingJobs || !userArchetype || !userArchetype.hasAnalysis
+                      ? 'bg-gray-700 text-gray-300'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
                 >
-                  {scrapingJobs ? 'Scraping...' : 'Refresh Jobs'}
+                  {scrapingJobs ? 'Scraping...' : 'Get Jobs'}
                 </button>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 relative">
+                {(!userArchetype || !userArchetype.hasAnalysis) && (
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-lg flex items-center justify-center z-10">
+                    <div className="text-center px-6">
+                      <p className="text-gray-300 mb-2 text-sm">Upload your transcript to unlock personalized job recommendations.</p>
+                      <Link to="/analysis" className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">Go to Analysis</Link>
+                    </div>
+                  </div>
+                )}
                 {jobs.map(renderJobCard)}
                 {jobsLoading && (
                   <div className="text-sm text-gray-400">Loading more jobs…</div>
                 )}
                 {!jobsLoading && jobs.length === 0 && (
-                  <div className="text-sm text-gray-400">No jobs found.</div>
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
+                    <p className="text-gray-400 mb-4">
+                      {userArchetype && userArchetype.hasAnalysis 
+                        ? "Click 'Get Jobs' to find personalized job recommendations based on your archetype."
+                        : "Upload your transcript first to get personalized job recommendations."
+                      }
+                    </p>
+                    {userArchetype && userArchetype.hasAnalysis && (
+                      <button
+                        onClick={scrapeJobs}
+                        disabled={scrapingJobs}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {scrapingJobs ? 'Finding Jobs...' : 'Find My Jobs'}
+                      </button>
+                    )}
+                  </div>
                 )}
                 {/* Observer target for infinite scroll */}
                 <div ref={observerRef} />
                 {!jobsHasMore && jobs.length > 0 && (
-                  <div className="text-xs text-gray-500 text-center">You’ve reached the end.</div>
+                  <div className="text-xs text-gray-500 text-center">You've reached the end.</div>
                 )}
               </div>
             </div>
@@ -440,12 +428,11 @@ const DashboardPage = () => {
           {/* Right Sidebar */}
           <div className="lg:col-span-1 space-y-6 sticky top-24 h-fit">
 
-
-                        {/* Your Archetypes */}
+            {/* Your Archetypes */}
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
               <h3 className="font-bold mb-4">Your Archetypes</h3>
               {archetypeLoading ? (
-                <div className="space-y-3">
+              <div className="space-y-3">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div key={i} className="flex justify-between items-center">
                       <div className="h-4 bg-gray-700 rounded animate-pulse w-24"></div>
@@ -455,30 +442,24 @@ const DashboardPage = () => {
                 </div>
               ) : userArchetype ? (
                 <div className="space-y-3">
-                  {Object.entries({
-                    'The Sage': userArchetype.archetype_sage_percentage || 0,
-                    'The Creator': userArchetype.archetype_creator_percentage || 0,
-                    'The Ruler': userArchetype.archetype_ruler_percentage || 0,
-                    'The Hero': userArchetype.archetype_hero_percentage || 0,
-                    'The Explorer': userArchetype.archetype_explorer_percentage || 0,
-                    'The Rebel': userArchetype.archetype_rebel_percentage || 0,
-                    'The Lover': userArchetype.archetype_lover_percentage || 0,
-                    'The Magician': userArchetype.archetype_magician_percentage || 0,
-                    'The Caregiver': userArchetype.archetype_caregiver_percentage || 0,
-                    'The Innocent': userArchetype.archetype_innocent_percentage || 0,
-                    'The Everyman': userArchetype.archetype_everyman_percentage || 0,
-                    'The Jester': userArchetype.archetype_jester_percentage || 0
+                                     {Object.entries({
+                    'Applied Practitioner': userArchetype.archetype_realistic_percentage || 0,
+                    'Analytical Thinker': userArchetype.archetype_investigative_percentage || 0,
+                    'Creative Innovator': userArchetype.archetype_artistic_percentage || 0,
+                    'Collaborative Supporter': userArchetype.archetype_social_percentage || 0,
+                    'Strategic Leader': userArchetype.archetype_enterprising_percentage || 0,
+                    'Methodical Organizer': userArchetype.archetype_conventional_percentage || 0
                   })
-                  .sort(([,a], [,b]) => (b as number) - (a as number))
-                  .slice(0, 6)
-                  .map(([archetype, percentage]) => (
-                    <div key={archetype} className="flex justify-between items-center">
-                      <span className="text-gray-300 text-sm">{archetype}</span>
-                      <span className={`text-xs ${percentage > 20 ? 'text-green-400' : percentage > 10 ? 'text-yellow-400' : 'text-gray-400'}`}>
-                        {percentage}%
-                      </span>
-                    </div>
-                  ))}
+                 .sort(([,a], [,b]) => (b as number) - (a as number))
+                 .slice(0, 6)
+                 .map(([archetype, percentage]) => (
+                   <div key={archetype} className="flex justify-between items-center">
+                     <span className="text-gray-300 text-sm">{archetype}</span>
+                     <span className={`text-xs ${percentage > 20 ? 'text-green-400' : percentage > 10 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                       {percentage}%
+                     </span>
+               </div>
+                 ))}
                 </div>
               ) : (
                 <div className="text-center py-4">
@@ -704,8 +685,6 @@ const DashboardPage = () => {
                     </div>
                   </div>
                 </div>
-
-                
 
                 {/* Account Actions */}
                 <div>
