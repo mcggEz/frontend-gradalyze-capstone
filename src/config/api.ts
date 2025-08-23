@@ -33,3 +33,4 @@ export const buildApiUrl = (endpoint: string): string => {
 export const getApiUrl = (endpointKey: keyof typeof API_CONFIG.ENDPOINTS): string => {
   return buildApiUrl(API_CONFIG.ENDPOINTS[endpointKey]);
 };
+

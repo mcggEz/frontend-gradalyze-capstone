@@ -69,6 +69,7 @@ const AnalysisPage = () => {
     certificates: []
   });
   const [extractedGrades, setExtractedGrades] = useState<any[]>([]);
+  const [analysisData, setAnalysisData] = useState<any>(null);
 
   const [existingTranscript, setExistingTranscript] = useState<any>(null);
   const [existingCertificates, setExistingCertificates] = useState<any[]>([]);
@@ -253,7 +254,7 @@ const AnalysisPage = () => {
           )}
           
           {/* Step 1: Upload */}
-          {!isCheckingTranscript && (!existingTranscript || currentStep === 'upload') && (
+          {!isCheckingTranscript && currentStep === 'upload' && (
             <UploadStep 
               uploadedFiles={uploadedFiles}
               onFilesUploaded={(files) => {
@@ -263,6 +264,7 @@ const AnalysisPage = () => {
               onProceedToValidation={() => setCurrentStep('validation')}
               existingTranscript={existingTranscript}
               existingCertificates={existingCertificates}
+              setAnalysisData={setAnalysisData}
             />
           )}
 
@@ -273,17 +275,14 @@ const AnalysisPage = () => {
               onValidationConfirmed={(confirmedGrades) => {
                 setExtractedGrades(confirmedGrades);
                 setCurrentStep('processing');
-                // Simulate processing and redirect to dossier
-                setTimeout(() => {
-                  navigate('/dossier');
-                }, 3000);
+                // Stay on analysis page to show results
               }}
             />
           )}
 
           {/* Step 4: Processing */}
           {currentStep === 'processing' && (
-            <ProcessingStep />
+            <ProcessingStep analysisData={analysisData} />
           )}
 
 
@@ -294,13 +293,14 @@ const AnalysisPage = () => {
 };
 
 // Upload Step Component
-const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedToValidation, existingTranscript, existingCertificates }: { 
+const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedToValidation, existingTranscript, existingCertificates, setAnalysisData }: { 
   uploadedFiles: {transcript: File | null, certificates: File[]}, 
   onFilesUploaded: (files: {transcript: File | null, certificates: File[]}) => void,
   onOcrComplete: (grades: any[]) => void,
   onProceedToValidation: () => void,
   existingTranscript?: any,
-  existingCertificates?: any[]
+  existingCertificates?: any[],
+  setAnalysisData: (data: any) => void
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragOver, setDragOver] = useState<'transcript' | 'certificates' | null>(null);
@@ -473,14 +473,17 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
   };
 
   const extractTranscript = (email: string, storagePath: string) => {
-    return fetch(getApiUrl('EXTRACT_GRADES'), {
+    return fetch('http://localhost:5000/api/users/extract-grades', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({ email, storage_path: storagePath })
     }).then(async (r) => {
       const json = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(json.message || 'OCR extraction failed');
-      return json as { grades?: any[]; text?: string };
+      console.log('Raw OCR Response:', json); // Debug log
+      return json as { grades?: any[]; text?: string; analysis?: any; debug_info?: any };
     });
   };
 
@@ -495,7 +498,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
       return;
     }
 
-    // If not yet uploaded, upload first
+    // Upload transcript first
     if (!torUploaded) {
       setIsProcessing(true);
       try {
@@ -503,27 +506,39 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
         setTorUploaded(true);
         setTorUrl(res.tor_url || null);
         setTorStoragePath(res.storage_path || null);
-        setIsProcessing(false);
-          setUploadProgress(0);
-        return; // stay on this step until user starts OCR
+        setUploadProgress(0);
+        
+        // Automatically start OCR after successful upload
+        if (res.storage_path) {
+          await performOcrAnalysis(email, res.storage_path);
+        }
       } catch (err: any) {
         alert(err.message || 'Upload failed');
         setIsProcessing(false);
         setUploadProgress(0);
-        return;
       }
     }
+  };
 
-    // If already uploaded, trigger OCR extraction on backend
+  const performOcrAnalysis = async (email: string, storagePath: string) => {
     setIsProcessing(true);
     try {
-      if (!torStoragePath) throw new Error('Missing storage path. Please re-upload your transcript.');
-      const res = await extractTranscript(email, torStoragePath);
-      // Prefer raw text for validation stage
-      if (res && typeof res.text === 'string' && res.text.length > 0) {
-        onOcrComplete([{ text: res.text }]);
-      } else if (Array.isArray(res.grades)) {
+      const res = await extractTranscript(email, storagePath);
+      console.log('OCR Response:', res); // Debug log
+      
+      // Use grades if available, otherwise fall back to text
+      if (Array.isArray(res.grades) && res.grades.length > 0) {
         onOcrComplete(res.grades);
+        // Store the full analysis data for the processing step
+        if (res.analysis) {
+          setAnalysisData(res.analysis);
+        }
+      } else if (res && typeof res.text === 'string' && res.text.length > 0) {
+        // If no grades but we have text, create a single item for display
+        onOcrComplete([{ text: res.text }]);
+      } else {
+        // Fallback to empty array
+        onOcrComplete([]);
       }
       setIsProcessing(false);
       // Move to validation step now that grades are present
@@ -793,7 +808,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
-                    Ready to upload transcript
+                    Ready to upload and analyze transcript
                   </span>
                 )}
                 {torUploaded && (
@@ -817,19 +832,12 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
                     </svg>
                     <span>Choose Transcript First</span>
                   </span>
-                ) : !torUploaded ? (
-                  <span className="flex items-center space-x-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span>Upload Transcript</span>
-                  </span>
                 ) : (
                   <span className="flex items-center space-x-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    <span>Start OCR Analysis</span>
+                    <span>Upload & Analyze Transcript</span>
                   </span>
                 )}
               </button>
@@ -841,54 +849,838 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
   );
 };
 
-// Validation Step Component (render raw JSON first)
+// Validation Step Component (display as structured table grouped by semester)
 const ValidationStep = ({ extractedGrades, onValidationConfirmed: _onConfirm }: {
   extractedGrades: any[],
   onValidationConfirmed: (grades: any[]) => void
 }) => {
+  const [editableData, setEditableData] = useState<any[]>([]);
+  const [editingCell, setEditingCell] = useState<{rowIndex: number, field: string} | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Parse the extracted grades to display in table format
+  const parseGradesForTable = (grades: any[]) => {
+    if (!Array.isArray(grades)) return [];
+    
+    console.log('Raw grades data:', grades); // Debug log
+    
+    return grades.map((grade, index) => {
+      // Clean and validate the data
+      const subject = grade.subject || grade.name || 'Unknown Subject';
+      const units = grade.units || grade.credit_units || 3;
+      const gradeValue = grade.grade || grade.score || 'N/A';
+      const semester = grade.semester || 'N/A';
+      const category = grade.category || grade.type || 'General';
+      
+      // Skip invalid entries
+      if (subject === 'Unknown Subject' || units > 10 || 
+          (typeof gradeValue === 'number' && (gradeValue > 5.0 || gradeValue < 0))) {
+        console.log('Skipping invalid grade:', grade);
+        return null;
+      }
+      
+      // Parse course code and title from subject
+      const subjectParts = subject.split(' - ');
+      const courseCode = subjectParts[0] || subject;
+      const courseTitle = subjectParts[1] || subject;
+      
+      return {
+        id: index + 1,
+        subject,
+        courseCode,
+        courseTitle,
+        units,
+        grade: gradeValue,
+        semester,
+        category
+      };
+    }).filter(Boolean); // Remove null entries
+  };
+
+  const tableData = parseGradesForTable(extractedGrades);
+
+  // Initialize editable data only once
+  useEffect(() => {
+    if (editableData.length === 0 && tableData.length > 0) {
+      setEditableData([...tableData]);
+    }
+  }, [extractedGrades]); // Only depend on the original data, not the processed data
+
+  // Handle cell editing
+  const handleCellClick = (rowIndex: number, field: string, value: any) => {
+    if (rowIndex >= 0) {
+      setEditingCell({ rowIndex, field });
+      setEditValue(String(value));
+    }
+  };
+
+  const handleCellEdit = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditValue(e.target.value);
+  };
+
+  const handleCellSave = () => {
+    if (editingCell && editingCell.rowIndex >= 0) {
+      const { rowIndex, field } = editingCell;
+      const newData = [...editableData];
+      
+      if (rowIndex < newData.length) {
+              // Validate and convert the value
+      let newValue: any = editValue;
+        if (field === 'units') {
+          const unitsNum = parseInt(editValue);
+          if (isNaN(unitsNum) || unitsNum < 0 || unitsNum > 10) {
+            alert('Units must be a number between 0 and 10');
+            return;
+          }
+          newValue = unitsNum;
+        } else if (field === 'grade') {
+          const gradeNum = parseFloat(editValue);
+          if (isNaN(gradeNum) || gradeNum < 0 || gradeNum > 5.0) {
+            alert('Grade must be a number between 0 and 5.0');
+            return;
+          }
+          newValue = gradeNum;
+        } else if (field === 'courseCode') {
+          // Update course code and rebuild subject
+          const courseTitle = newData[rowIndex].courseTitle || '';
+          const newSubject = `${editValue} - ${courseTitle}`;
+          newData[rowIndex] = { 
+            ...newData[rowIndex], 
+            subject: newSubject,
+            courseCode: editValue
+          };
+          setEditableData(newData);
+          setEditingCell(null);
+          setEditValue('');
+          return;
+        } else if (field === 'courseTitle') {
+          // Update course title and rebuild subject
+          const courseCode = newData[rowIndex].courseCode || '';
+          const newSubject = `${courseCode} - ${editValue}`;
+          newData[rowIndex] = { 
+            ...newData[rowIndex], 
+            subject: newSubject,
+            courseTitle: editValue
+          };
+          setEditableData(newData);
+          setEditingCell(null);
+          setEditValue('');
+          return;
+        }
+        
+        newData[rowIndex] = { ...newData[rowIndex], [field]: newValue };
+        setEditableData(newData);
+      }
+    }
+    setEditingCell(null);
+    setEditValue('');
+  };
+
+  const handleCellCancel = () => {
+    setEditingCell(null);
+    setEditValue('');
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleCellSave();
+    } else if (e.key === 'Escape') {
+      handleCellCancel();
+    }
+  };
+
+  // Add new row
+  const addNewRow = (semester: string) => {
+    const newRow = {
+      id: String(Date.now()), // Use timestamp as unique ID
+      subject: 'NEW - New Subject',
+      courseCode: 'NEW',
+      courseTitle: 'New Subject',
+      units: 3,
+      grade: 2.0,
+      semester: semester,
+      category: 'General'
+    };
+    setEditableData([...editableData, newRow]);
+  };
+
+  // Delete row
+  const deleteRow = (rowIndex: number) => {
+    console.log('Deleting row at index:', rowIndex);
+    console.log('Current editableData length:', editableData.length);
+    
+    if (rowIndex >= 0 && rowIndex < editableData.length) {
+      const newData = editableData.filter((_, index) => index !== rowIndex);
+      console.log('New data length:', newData.length);
+      setEditableData(newData);
+    } else {
+      console.error('Invalid row index for deletion:', rowIndex);
+    }
+  };
+
+  // Handle validate and process
+  const handleValidateAndProcess = async () => {
+    try {
+      setIsProcessing(true);
+      
+      // Get user data from localStorage
+      const stored = localStorage.getItem('user');
+      const parsedUser = stored ? (() => { try { return JSON.parse(stored) as any; } catch { return null; } })() : null;
+      const email = parsedUser?.email || '';
+      
+      if (!email) {
+        alert('Please log in again to process your analysis.');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Prepare the data to send
+      const analysisData = {
+        email: email,
+        grades: editableData,
+        total_subjects: editableData.length,
+        total_units: editableData.reduce((sum, row) => sum + (typeof row.units === 'number' ? row.units : 0), 0),
+        overall_gpa: (() => {
+          const numericGrades = editableData
+            .map(row => typeof row.grade === 'number' ? row.grade : null)
+            .filter(grade => grade !== null);
+          if (numericGrades.length === 0) return 0;
+          return numericGrades.reduce((sum, grade) => sum + grade!, 0) / numericGrades.length;
+        })(),
+        semester_breakdown: Object.entries(semesterGroups).map(([semester, grades]) => ({
+          semester,
+          subject_count: grades.length,
+          total_units: grades.reduce((sum, grade) => sum + (typeof grade.units === 'number' ? grade.units : 0), 0),
+          semester_gpa: (() => {
+            const numericGrades = grades
+              .map(row => typeof row.grade === 'number' ? row.grade : null)
+              .filter(grade => grade !== null);
+            if (numericGrades.length === 0) return 0;
+            return numericGrades.reduce((sum, grade) => sum + grade!, 0) / numericGrades.length;
+          })()
+        }))
+      };
+
+      console.log('Sending analysis data:', analysisData);
+
+      // Debug data
+      console.log('Debug - Processing grades data:', editableData.length, 'items');
+
+        // First, validate the grades
+        const validateResponse = await fetch('http://localhost:5000/api/analysis/validate-grades', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            grades: editableData
+          })
+        });
+
+        if (!validateResponse.ok) {
+          throw new Error('Failed to validate grades');
+        }
+
+        // Then compute archetype
+        const response = await fetch('http://localhost:5000/api/analysis/compute-archetype', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            grades: editableData,
+            email: email
+          })
+        });
+
+      if (!response.ok) {
+        throw new Error('Failed to process analysis');
+      }
+
+      const result = await response.json();
+      console.log('Analysis processing result:', result);
+
+      // Check if data was saved to database
+      if (result.saved_to_db) {
+        console.log('✅ Analysis results saved to database successfully');
+        // Show success message
+        alert('✅ Analysis completed and saved to database successfully!');
+      } else {
+        console.log('⚠️ Analysis completed but database save failed:', result.db_error || 'Unknown error');
+        // Show warning message
+        alert('⚠️ Analysis completed but failed to save to database. Please try again later.');
+      }
+
+      // Move to processing step
+      _onConfirm(editableData);
+      
+    } catch (error) {
+      console.error('Error processing analysis:', error);
+      alert('Failed to process analysis. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Group grades by semester
+  const groupGradesBySemester = (grades: any[]) => {
+    const grouped: { [key: string]: any[] } = {};
+    
+    grades.forEach(grade => {
+      const semester = grade.semester || 'Unknown Semester';
+      if (!grouped[semester]) {
+        grouped[semester] = [];
+      }
+      grouped[semester].push(grade);
+    });
+    
+    return grouped;
+  };
+
+  const semesterGroups = groupGradesBySemester(editableData);
+
   return (
     <div className="space-y-6">
       <div className="text-center mb-6">
-        <h3 className="text-xl font-semibold mb-2">📝 Validate (Raw JSON)</h3>
-        <p className="text-gray-400">Displaying the raw OCR JSON output for review.</p>
+        <h3 className="text-xl font-semibold mb-2">📊 Extracted Grades Table</h3>
+        <p className="text-gray-400">Review and validate the extracted academic data from your transcript.</p>
       </div>
 
-      <div className="bg-gray-800 rounded-lg p-6">
-        <pre className="whitespace-pre-wrap text-sm text-gray-200">
-{JSON.stringify(extractedGrades, null, 2)}
-        </pre>
+      {/* Debug Information */}
+      <div className="bg-gray-800 rounded-lg p-4 mb-4">
+        <h4 className="text-sm font-semibold text-white mb-2">Debug Info:</h4>
+        <p className="text-xs text-gray-300">Raw grades count: {extractedGrades.length}</p>
+        <p className="text-xs text-gray-300">Processed grades count: {tableData.length}</p>
+        <p className="text-xs text-gray-300">Editable data count: {editableData.length}</p>
+        <details className="mt-2">
+          <summary className="text-xs text-blue-400 cursor-pointer">Show Raw JSON</summary>
+          <pre className="text-xs text-gray-400 mt-2 bg-gray-900 p-2 rounded overflow-auto max-h-40">
+            {JSON.stringify(extractedGrades, null, 2)}
+          </pre>
+        </details>
+        <details className="mt-2">
+          <summary className="text-xs text-green-400 cursor-pointer">Show Editable Data</summary>
+          <pre className="text-xs text-gray-400 mt-2 bg-gray-900 p-2 rounded overflow-auto max-h-40">
+            {JSON.stringify(editableData, null, 2)}
+          </pre>
+        </details>
       </div>
+
+
+
+      {editableData.length > 0 ? (
+        <div className="space-y-8">
+          {Object.entries(semesterGroups).map(([semester, grades], semesterIndex) => (
+            <div key={semester} className="bg-gray-800 rounded-lg overflow-hidden">
+              {/* Semester Header */}
+              <div className="bg-gray-700 px-6 py-4 border-b border-gray-600 flex justify-between items-center">
+                <h4 className="text-xl font-bold text-white">
+                  {semester}
+                </h4>
+                <button
+                  onClick={() => addNewRow(semester)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+                >
+                  + Add Row
+                </button>
+              </div>
+              
+              {/* Semester Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gray-700 border-b-2 border-gray-600">
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-200 uppercase tracking-wider border-r border-gray-600">
+                        COURSE CODE
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-200 uppercase tracking-wider border-r border-gray-600">
+                        COURSE TITLE
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-200 uppercase tracking-wider border-r border-gray-600">
+                        UNITS
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-200 uppercase tracking-wider">
+                        GRADE
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                                         {grades.filter(row => row !== null).map((row, index) => {
+                       // Parse course code and title from subject
+                       const subjectParts = row.subject.split(' - ');
+                       const courseCode = subjectParts[0] || row.subject;
+                       const courseTitle = subjectParts[1] || row.subject;
+                       
+                       // Validate data before rendering
+                       const units = typeof row.units === 'number' ? row.units : parseInt(row.units) || 3;
+                       const grade = typeof row.grade === 'number' ? row.grade : parseFloat(row.grade) || 0;
+                       
+                       // Skip invalid data
+                       if (units > 10 || grade > 5.0 || grade < 0) {
+                         return null;
+                       }
+                       
+                       const globalIndex = editableData.findIndex(item => item.id === row.id);
+                       
+                       return (
+                         <tr key={`${semester}-${index}`} className="border-b border-gray-300 hover:bg-gray-50 transition-colors">
+                           <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-300">
+                             {editingCell?.rowIndex === globalIndex && editingCell?.field === 'courseCode' ? (
+                               <input
+                                 type="text"
+                                 value={editValue}
+                                 onChange={handleCellEdit}
+                                 onKeyDown={handleKeyPress}
+                                 onBlur={handleCellSave}
+                                 className="w-full px-2 py-1 border border-blue-300 rounded text-sm"
+                                 autoFocus
+                               />
+                             ) : (
+                               <div 
+                                 onClick={() => handleCellClick(globalIndex, 'courseCode', courseCode)}
+                                 className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded"
+                               >
+                                 {courseCode}
+                               </div>
+                             )}
+                           </td>
+                           <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-300">
+                             {editingCell?.rowIndex === globalIndex && editingCell?.field === 'courseTitle' ? (
+                               <input
+                                 type="text"
+                                 value={editValue}
+                                 onChange={handleCellEdit}
+                                 onKeyDown={handleKeyPress}
+                                 onBlur={handleCellSave}
+                                 className="w-full px-2 py-1 border border-blue-300 rounded text-sm"
+                                 autoFocus
+                               />
+                             ) : (
+                               <div 
+                                 onClick={() => handleCellClick(globalIndex, 'courseTitle', courseTitle)}
+                                 className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded"
+                               >
+                                 {courseTitle}
+                               </div>
+                             )}
+                           </td>
+                           <td className="px-4 py-3 text-sm text-gray-600 text-right border-r border-gray-300">
+                             {editingCell?.rowIndex === globalIndex && editingCell?.field === 'units' ? (
+                               <input
+                                 type="number"
+                                 min="0"
+                                 max="10"
+                                 value={editValue}
+                                 onChange={handleCellEdit}
+                                 onKeyDown={handleKeyPress}
+                                 onBlur={handleCellSave}
+                                 className="w-full px-2 py-1 border border-blue-300 rounded text-sm text-right"
+                                 autoFocus
+                               />
+                             ) : (
+                               <div 
+                                 onClick={() => handleCellClick(globalIndex, 'units', units)}
+                                 className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded text-right"
+                               >
+                                 {units}
+                               </div>
+                             )}
+                           </td>
+                           <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                             {editingCell?.rowIndex === globalIndex && editingCell?.field === 'grade' ? (
+                               <input
+                                 type="number"
+                                 step="0.01"
+                                 min="0"
+                                 max="5"
+                                 value={editValue}
+                                 onChange={handleCellEdit}
+                                 onKeyDown={handleKeyPress}
+                                 onBlur={handleCellSave}
+                                 className="w-full px-2 py-1 border border-blue-300 rounded text-sm text-right"
+                                 autoFocus
+                               />
+                             ) : (
+                               <div className="flex items-center justify-between">
+                                 <div 
+                                   onClick={() => handleCellClick(globalIndex, 'grade', grade)}
+                                   className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded text-right flex-1"
+                                 >
+                                   <span className={`px-3 py-1 rounded text-xs font-medium ${
+                                     grade <= 1.5 
+                                       ? 'bg-green-100 text-green-800' 
+                                       : grade <= 2.5 
+                                         ? 'bg-yellow-100 text-yellow-800' 
+                                         : 'bg-red-100 text-red-800'
+                                   }`}>
+                                     {grade.toFixed(2)}
+                                   </span>
+                                 </div>
+                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     
+                                       deleteRow(globalIndex);
+                                     
+                                   }}
+                                   className="ml-2 text-red-600 hover:text-red-800 text-xs font-bold bg-red-100 hover:bg-red-200 px-2 py-1 rounded"
+                                   title="Delete row"
+                                 >
+                                   ×
+                                 </button>
+                               </div>
+                             )}
+                           </td>
+                         </tr>
+                       );
+                     })}
+                    {/* Total Row */}
+                    <tr className="bg-gray-100 border-t-2 border-gray-400 font-bold">
+                      <td className="px-4 py-3 text-sm text-gray-900 border-r border-gray-400">
+                        TOTAL
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 border-r border-gray-400">
+                        
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right border-r border-gray-400">
+                        {grades.reduce((sum, grade) => sum + (typeof grade.units === 'number' ? grade.units : 0), 0)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                        
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Semester Summary */}
+              <div className="bg-gray-750 px-6 py-3 border-t border-gray-600">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-300">
+                    Semester GPA: <span className="font-medium text-white">
+                      {(() => {
+                        const numericGrades = grades
+                          .map(row => typeof row.grade === 'number' ? row.grade : null)
+                          .filter(grade => grade !== null);
+                        if (numericGrades.length === 0) return 'N/A';
+                        const avg = numericGrades.reduce((sum, grade) => sum + grade!, 0) / numericGrades.length;
+                        return avg.toFixed(2);
+                      })()}
+                    </span>
+                  </span>
+                  <span className="text-gray-300">
+                    Excellent Grades (≤1.5): <span className="font-medium text-green-400">
+                      {grades.filter(row => typeof row.grade === 'number' && row.grade <= 1.5).length}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-gray-800 rounded-lg p-8 text-center">
+          <div className="text-gray-400 mb-4">
+            <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-300 mb-2">No Grades Extracted</h3>
+          <p className="text-gray-400">The OCR analysis didn't find any structured grade data in your transcript.</p>
+        </div>
+      )}
+
+      {/* Overall Summary Statistics */}
+      {editableData.length > 0 && (
+        <div className="bg-gray-800 rounded-lg p-6">
+          <h4 className="text-lg font-semibold text-white mb-4 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Overall Academic Summary
+          </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-white">{editableData.length}</div>
+                <div className="text-sm text-gray-400">Total Subjects</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-white">
+                  {editableData.filter(row => row !== null).reduce((sum, row) => sum + (typeof row.units === 'number' ? row.units : 0), 0)}
+                </div>
+                <div className="text-sm text-gray-400">Total Units</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-white">
+                  {(() => {
+                    const numericGrades = editableData
+                      .filter(row => row !== null)
+                      .map(row => typeof row.grade === 'number' ? row.grade : null)
+                      .filter(grade => grade !== null);
+                    if (numericGrades.length === 0) return 'N/A';
+                    const avg = numericGrades.reduce((sum, grade) => sum + grade!, 0) / numericGrades.length;
+                    return avg.toFixed(2);
+                  })()}
+                </div>
+                <div className="text-sm text-gray-400">Overall GPA</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-white">
+                  {editableData.filter(row => row !== null && typeof row.grade === 'number' && row.grade <= 1.5).length}
+                </div>
+                <div className="text-sm text-gray-400">Excellent Grades (≤1.5)</div>
+              </div>
+            </div>
+          
+          {/* Semester Breakdown */}
+          <div className="mt-6 pt-6 border-t border-gray-700">
+            <h5 className="text-md font-medium text-gray-300 mb-3">Semester Breakdown</h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Object.entries(semesterGroups).map(([semester, grades]) => (
+                <div key={semester} className="bg-gray-750 rounded-lg p-3">
+                  <div className="text-sm font-medium text-white mb-1">{semester}</div>
+                  <div className="text-xs text-gray-400">
+                    {grades.length} subjects • {grades.reduce((sum, grade) => sum + (typeof grade.units === 'number' ? grade.units : 0), 0)} units
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Validate & Process Button */}
+      {editableData.length > 0 && (
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div className="text-center">
+            <h4 className="text-lg font-semibold text-white mb-4 flex items-center justify-center">
+              <svg className="w-5 h-5 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Ready to Process Analysis
+            </h4>
+            <p className="text-gray-400 mb-6 max-w-2xl mx-auto">
+              Your transcript data has been validated. Click below to process your academic analysis using advanced AI algorithms including:
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-left">
+              <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+                <h5 className="text-blue-300 font-semibold mb-2">🎯 SoP 1 / Obj 1: Career Path Forecasting</h5>
+                <p className="text-sm text-gray-300 mb-2"><strong>Theory:</strong> Predictive analytics in career guidance</p>
+                <p className="text-sm text-gray-300 mb-2"><strong>Method:</strong> Linear Regression applied to academic subject grades</p>
+                <p className="text-sm text-gray-300"><strong>Tool:</strong> Scikit-learn regression models</p>
+              </div>
+              
+              <div className="bg-purple-900/20 border border-purple-700 rounded-lg p-4">
+                <h5 className="text-purple-300 font-semibold mb-2">🧠 SoP 2 / Obj 2: Student Archetype Classification</h5>
+                <p className="text-sm text-gray-300 mb-2"><strong>Theory:</strong> Educational psychology and career archetypes</p>
+                <p className="text-sm text-gray-300 mb-2"><strong>Method:</strong> K-Means Clustering based on subject-specific grades</p>
+                <p className="text-sm text-gray-300"><strong>Tool:</strong> Scikit-learn clustering module</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleValidateAndProcess()}
+              disabled={isProcessing}
+              className={`px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold text-lg transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center justify-center mx-auto ${isProcessing ? 'opacity-75 cursor-not-allowed' : ''}`}
+            >
+              {isProcessing ? (
+                <>
+                  <svg className="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing Analysis...
+                </>
+              ) : (
+                <>
+                  <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Validate & Process Analysis
+                </>
+              )}
+            </button>
+            
+            <p className="text-xs text-gray-500 mt-3">
+              This will save your data to the database and generate comprehensive career insights
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // Admin Review flow removed per product change
 
-// Processing Step Component
-const ProcessingStep = () => {
+// Processing Step Component - Archetype Results
+const ProcessingStep = ({ analysisData }: { analysisData?: any }) => {
+  // Archetype definitions with colors and descriptions
+  const archetypes = {
+    realistic: {
+      name: 'Applied Practitioner',
+      color: 'bg-blue-500',
+      description: 'Practical and hands-on approach to technology. Excels in hardware, networking, and systems.',
+      icon: '🔧'
+    },
+    investigative: {
+      name: 'Analytical Thinker',
+      color: 'bg-purple-500',
+      description: 'Analytical and research-focused. Excels in mathematics, algorithms, and complex problem-solving.',
+      icon: '🧮'
+    },
+    artistic: {
+      name: 'Creative Innovator',
+      color: 'bg-pink-500',
+      description: 'Creative and innovative approach to technology. Excels in design, multimedia, and creative coding.',
+      icon: '🎨'
+    },
+    social: {
+      name: 'Collaborative Supporter',
+      color: 'bg-green-500',
+      description: 'Collaborative and supportive approach. Excels in communication, training, and helping others.',
+      icon: '🤝'
+    },
+    enterprising: {
+      name: 'Strategic Leader',
+      color: 'bg-yellow-500',
+      description: 'Strategic and leadership-oriented. Excels in project management, entrepreneurship, and business planning.',
+      icon: '💼'
+    },
+    conventional: {
+      name: 'Methodical Organizer',
+      color: 'bg-gray-500',
+      description: 'Methodical and organized approach. Excels in database management, documentation, and structured processes.',
+      icon: '📋'
+    }
+  };
+
+  // Get archetype percentages from analysis data or use sample data
+  const archetypePercentages = analysisData?.learning_archetype?.archetype_percentages || {
+    realistic: 25,
+    investigative: 30,
+    artistic: 15,
+    social: 10,
+    enterprising: 12,
+    conventional: 8
+  };
+
+  // Sort archetypes by percentage (highest first)
+  const sortedArchetypes = Object.entries(archetypePercentages)
+    .sort(([,a], [,b]) => (b as number) - (a as number))
+    .map(([key, percentage]) => ({
+      key,
+      percentage: percentage as number,
+      ...archetypes[key as keyof typeof archetypes]
+    }));
+
   return (
-    <div className="text-center py-12">
-      <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center animate-pulse">
-        <svg className="w-10 h-10 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-        </svg>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="text-center">
+        <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-6 flex items-center justify-center">
+          <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </div>
+        <h3 className="text-2xl font-semibold mb-4">🧠 Your Learning Archetype Analysis</h3>
+        <p className="text-gray-400 mb-6 max-w-md mx-auto">
+          Based on your academic performance patterns, here's your personalized learning archetype breakdown.
+        </p>
       </div>
-      <h3 className="text-2xl font-semibold mb-4">🧠 Computing Your Learning Archetype</h3>
-      <p className="text-gray-400 mb-6 max-w-md mx-auto">
-        Our AI is analyzing your academic performance patterns to determine your learning archetype and predict suitable career paths.
-      </p>
-      <div className="space-y-2">
-        <div className="flex items-center justify-center space-x-2 text-sm">
-          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-          <span className="text-gray-300">Analyzing grade patterns...</span>
+
+      {/* Primary Archetype */}
+      {sortedArchetypes.length > 0 && (
+        <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-700/50 rounded-lg p-6">
+          <div className="text-center mb-4">
+            <div className="text-4xl mb-2">{sortedArchetypes[0].icon}</div>
+            <h4 className="text-xl font-bold text-white mb-2">Primary Archetype</h4>
+            <h5 className="text-lg font-semibold text-blue-300">{sortedArchetypes[0].name}</h5>
+            <div className="text-3xl font-bold text-white mt-2">{sortedArchetypes[0].percentage}%</div>
+          </div>
+          <p className="text-gray-300 text-center text-sm">{sortedArchetypes[0].description}</p>
         </div>
-        <div className="flex items-center justify-center space-x-2 text-sm">
-          <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div>
-          <span className="text-gray-300">Computing career matches...</span>
+      )}
+
+      {/* All Archetypes Breakdown */}
+      <div className="space-y-4">
+        <h4 className="text-lg font-semibold text-white text-center">Complete Archetype Breakdown</h4>
+        <div className="grid gap-4">
+          {sortedArchetypes.map((archetype, index) => (
+            <div key={archetype.key} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-10 h-10 ${archetype.color} rounded-full flex items-center justify-center text-white font-bold`}>
+                    {archetype.icon}
+                  </div>
+                  <div>
+                    <h5 className="font-semibold text-white">{archetype.name}</h5>
+                    <p className="text-sm text-gray-400">{archetype.description}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-white">{archetype.percentage}%</div>
+                  <div className="text-xs text-gray-400">Match</div>
+                </div>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="w-full bg-gray-700 rounded-full h-3">
+                <div 
+                  className={`${archetype.color} h-3 rounded-full transition-all duration-1000 ease-out`}
+                  style={{ width: `${archetype.percentage}%` }}
+                ></div>
+              </div>
+              
+              {/* Rank Badge */}
+              <div className="mt-2 flex justify-between items-center">
+                <span className="text-xs text-gray-400">
+                  Rank #{index + 1} of {sortedArchetypes.length}
+                </span>
+                {index === 0 && (
+                  <span className="px-2 py-1 bg-yellow-900 text-yellow-200 text-xs font-medium rounded-full">
+                    Primary
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="flex items-center justify-center space-x-2 text-sm">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" style={{animationDelay: '1s'}}></div>
-          <span className="text-gray-300">Finding company opportunities...</span>
+      </div>
+
+      {/* Next Steps */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+        <h4 className="text-lg font-semibold text-white mb-3 text-center">What's Next?</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+          <div className="space-y-2">
+            <div className="w-12 h-12 bg-blue-500 rounded-full mx-auto flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6z" />
+              </svg>
+            </div>
+            <h5 className="font-medium text-white">Career Matches</h5>
+            <p className="text-sm text-gray-400">Discover jobs that match your archetype</p>
+          </div>
+          <div className="space-y-2">
+            <div className="w-12 h-12 bg-green-500 rounded-full mx-auto flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h5 className="font-medium text-white">Skills Analysis</h5>
+            <p className="text-sm text-gray-400">See your identified skills and strengths</p>
+          </div>
+          <div className="space-y-2">
+            <div className="w-12 h-12 bg-purple-500 rounded-full mx-auto flex items-center justify-center">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <h5 className="font-medium text-white">Company Matches</h5>
+            <p className="text-sm text-gray-400">Find companies that value your profile</p>
+          </div>
         </div>
       </div>
     </div>
