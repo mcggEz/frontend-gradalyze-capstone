@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { getApiUrl } from '../config/api';
 
 const SettingsPage = () => {
   const [user, setUser] = useState({
@@ -17,7 +18,7 @@ const SettingsPage = () => {
         setUser(parsed);
         // Try to refresh from backend to ensure student_number is present
         if (parsed.email) {
-          fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(parsed.email)}`)
+          fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(parsed.email)}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
               if (data && data.email) {

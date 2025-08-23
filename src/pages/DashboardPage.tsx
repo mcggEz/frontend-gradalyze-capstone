@@ -339,17 +339,17 @@ const DashboardPage = () => {
               <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-6 flex items-center justify-center">
                 <span className="text-2xl">🎓</span>
                 </div>
-             
+              
               <h2 className="text-2xl font-bold mb-2">
                 Welcome back, <span className="text-blue-400">{(user.name || 'User').split(' ')[0]}</span>!
               </h2>
-             
+              
               <p className="text-gray-300 mb-2">{user.course || 'Course'}{user.student_number ? ` • ${user.student_number}` : ''}</p>
-             
+              
               <p className="text-gray-400 mb-8 max-w-md mx-auto">
                 Ready to discover your learning archetype? Upload your transcript to get personalized insights about your academic journey.
               </p>
-             
+              
               <Link 
                 to="/analysis"
                 className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
@@ -361,51 +361,35 @@ const DashboardPage = () => {
               </Link>
             </div>
 
-            {/* Jobs Feed */}
-            <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold">Recommended Jobs</h3>
-                <button
-                  onClick={scrapeJobs}
-                  disabled={scrapingJobs || !userArchetype || !userArchetype.hasAnalysis}
-                  title={!userArchetype || !userArchetype.hasAnalysis ? 'Upload your transcript first to enable job scraping' : ''}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                    scrapingJobs || !userArchetype || !userArchetype.hasAnalysis
-                      ? 'bg-gray-700 text-gray-300'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                >
-                  {scrapingJobs ? 'Scraping...' : 'Get Jobs'}
-                </button>
-              </div>
-              <div className="space-y-3 relative">
-                {(!userArchetype || !userArchetype.hasAnalysis) && (
-                  <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-lg flex items-center justify-center z-10">
-                    <div className="text-center px-6">
-                      <p className="text-gray-300 mb-2 text-sm">Upload your transcript to unlock personalized job recommendations.</p>
-                      <Link to="/analysis" className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">Go to Analysis</Link>
-                    </div>
-                  </div>
-                )}
-                {jobs.map(renderJobCard)}
-                {jobsLoading && (
-                  <div className="text-sm text-gray-400">Loading more jobs…</div>
-                )}
-                {!jobsLoading && jobs.length === 0 && (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
-                      </svg>
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
-                    <p className="text-gray-400 mb-4">
-                      {userArchetype && userArchetype.hasAnalysis 
-                        ? "Click 'Get Jobs' to find personalized job recommendations based on your archetype."
-                        : "Upload your transcript first to get personalized job recommendations."
-                      }
-                    </p>
-                    {userArchetype && userArchetype.hasAnalysis && (
+            {/* Jobs Feed - Only show if user has transcript */}
+            {userArchetype?.hasAnalysis && (
+              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold">Recommended Jobs</h3>
+                  <button
+                    onClick={scrapeJobs}
+                    disabled={scrapingJobs}
+                    className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {scrapingJobs ? 'Scraping...' : 'Get Jobs'}
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {jobs.map(renderJobCard)}
+                  {jobsLoading && (
+                    <div className="text-sm text-gray-400">Loading more jobs…</div>
+                  )}
+                  {!jobsLoading && jobs.length === 0 && (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
+                      <p className="text-gray-400 mb-4">
+                        Click 'Get Jobs' to find personalized job recommendations based on your archetype.
+                      </p>
                       <button
                         onClick={scrapeJobs}
                         disabled={scrapingJobs}
@@ -413,16 +397,16 @@ const DashboardPage = () => {
                       >
                         {scrapingJobs ? 'Finding Jobs...' : 'Find My Jobs'}
                       </button>
-                    )}
-                  </div>
-                )}
-                {/* Observer target for infinite scroll */}
-                <div ref={observerRef} />
-                {!jobsHasMore && jobs.length > 0 && (
-                  <div className="text-xs text-gray-500 text-center">You've reached the end.</div>
-                )}
+                    </div>
+                  )}
+                  {/* Observer target for infinite scroll */}
+                  <div ref={observerRef} />
+                  {!jobsHasMore && jobs.length > 0 && (
+                    <div className="text-xs text-gray-500 text-center">You've reached the end.</div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Right Sidebar */}
@@ -437,7 +421,7 @@ const DashboardPage = () => {
                     <div key={i} className="flex justify-between items-center">
                       <div className="h-4 bg-gray-700 rounded animate-pulse w-24"></div>
                       <div className="h-4 bg-gray-700 rounded animate-pulse w-12"></div>
-                    </div>
+                </div>
                   ))}
                 </div>
               ) : userArchetype ? (
@@ -458,13 +442,13 @@ const DashboardPage = () => {
                      <span className={`text-xs ${percentage > 20 ? 'text-green-400' : percentage > 10 ? 'text-yellow-400' : 'text-gray-400'}`}>
                        {percentage}%
                      </span>
-               </div>
+                </div>
                  ))}
                 </div>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-gray-400 text-sm">Upload your transcript to see your archetype analysis</p>
-                </div>
+              </div>
               )}
             </div>
 

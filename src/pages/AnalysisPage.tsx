@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../config/api';
 
 const AnalysisPage = () => {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ const AnalysisPage = () => {
 
   const checkExistingTranscript = async (email: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/auth/profile-by-email?email=${encodeURIComponent(email)}`);
+      const response = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const userData = await response.json();
         
@@ -68,10 +69,7 @@ const AnalysisPage = () => {
     certificates: []
   });
   const [extractedGrades, setExtractedGrades] = useState<any[]>([]);
-  const [validationStatus, setValidationStatus] = useState<'pending' | 'user-confirmed' | 'admin-approved' | 'rejected'>('pending');
-  const [archetype, setArchetype] = useState<any>(null);
-  const [careerPaths, setCareerPaths] = useState<any[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
+
   const [existingTranscript, setExistingTranscript] = useState<any>(null);
   const [existingCertificates, setExistingCertificates] = useState<any[]>([]);
   const [isCheckingTranscript, setIsCheckingTranscript] = useState(true);
@@ -253,7 +251,7 @@ const AnalysisPage = () => {
               </div>
             </div>
           )}
-
+          
           {/* Step 1: Upload */}
           {!isCheckingTranscript && (!existingTranscript || currentStep === 'upload') && (
             <UploadStep 
@@ -274,7 +272,6 @@ const AnalysisPage = () => {
               extractedGrades={extractedGrades}
               onValidationConfirmed={(confirmedGrades) => {
                 setExtractedGrades(confirmedGrades);
-                setValidationStatus('user-confirmed');
                 setCurrentStep('processing');
                 // Simulate processing and redirect to dossier
                 setTimeout(() => {
@@ -348,7 +345,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
       form.append('kind', 'certificate');
       form.append('file', file, file.name);
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', 'http://localhost:5000/api/users/upload-tor');
+      xhr.open('POST', getApiUrl('UPLOAD_TOR'));
       xhr.withCredentials = false;
       xhr.setRequestHeader('Accept', 'application/json');
       xhr.onload = () => {
@@ -449,7 +446,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
       }
 
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', 'http://localhost:5000/api/users/upload-tor');
+      xhr.open('POST', getApiUrl('UPLOAD_TOR'));
       xhr.withCredentials = false;
       xhr.setRequestHeader('Accept', 'application/json');
       xhr.upload.onprogress = (evt) => {
@@ -476,7 +473,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
   };
 
   const extractTranscript = (email: string, storagePath: string) => {
-    return fetch('http://localhost:5000/api/users/extract-grades', {
+    return fetch(getApiUrl('EXTRACT_GRADES'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, storage_path: storagePath })
@@ -680,7 +677,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
               <div className="mb-4 bg-blue-900/20 border border-blue-700 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-blue-300 mb-3">Existing Certificates ({existingCertificates.length})</h5>
                 <div className="space-y-2">
-                  {existingCertificates.map((cert, index) => (
+                  {existingCertificates.map((cert) => (
                     <div key={cert.id} className="flex items-center justify-between bg-blue-800/20 rounded p-2">
                       <div className="flex items-center space-x-2">
                         <span className="text-blue-300">📄</span>
@@ -898,101 +895,6 @@ const ProcessingStep = () => {
   );
 };
 
-// Results Step Component
-const ResultsStep = ({ archetype, careerPaths, companies }: {
-  archetype: any,
-  careerPaths: any[],
-  companies: any[]
-}) => {
-  return (
-    <div className="space-y-8">
-      <div className="text-center mb-8">
-        <h3 className="text-2xl font-semibold mb-2">🎉 Analysis Complete!</h3>
-        <p className="text-gray-400">Here are your personalized insights and recommendations.</p>
-      </div>
 
-      {/* Learning Archetype */}
-      <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border border-blue-700 rounded-lg p-6">
-        <div className="flex items-center space-x-4 mb-4">
-          <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-            <span className="text-2xl">🧠</span>
-          </div>
-          <div>
-            <h4 className="text-xl font-bold text-blue-300">{archetype.type}</h4>
-            <p className="text-blue-200 text-sm">Learning Archetype Score: {archetype.score}/10</p>
-          </div>
-        </div>
-        <p className="text-gray-300 mb-4">{archetype.description}</p>
-        <div className="flex flex-wrap gap-2">
-          {archetype.strengths.map((strength: string, index: number) => (
-            <span key={index} className="bg-blue-800/50 text-blue-200 px-3 py-1 rounded-full text-sm">
-              {strength}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Career Paths */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h4 className="text-xl font-semibold mb-4">🎯 Recommended Career Paths</h4>
-        <div className="space-y-4">
-          {careerPaths.map((career, index) => (
-            <div key={index} className="bg-gray-700 rounded-lg p-4 flex items-center justify-between">
-              <div>
-                <h5 className="font-semibold text-white">{career.title}</h5>
-                <p className="text-sm text-gray-300">Match: {career.match}% | Demand: {career.demand}</p>
-                <p className="text-sm text-gray-400">{career.salary}</p>
-              </div>
-              <div className="text-right">
-                <div className="w-16 h-2 bg-gray-600 rounded-full">
-                  <div 
-                    className="h-2 bg-green-500 rounded-full" 
-                    style={{width: `${career.match}%`}}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Company Opportunities */}
-      <div className="bg-gray-800 rounded-lg p-6">
-        <h4 className="text-xl font-semibold mb-4">🏢 Current Job Opportunities</h4>
-        <div className="space-y-4">
-          {companies.map((company, index) => (
-            <div key={index} className="bg-gray-700 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h5 className="font-semibold text-white">{company.name}</h5>
-                <span className="text-xs text-gray-400">{company.posted}</span>
-              </div>
-              <p className="text-blue-300 font-medium">{company.position}</p>
-              <p className="text-sm text-gray-400">{company.type}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <Link 
-          to="/dossier"
-          className="flex-1 bg-green-600 hover:bg-green-700 text-white text-center py-3 rounded-md font-medium transition-colors"
-        >
-          📄 Generate Dossier
-        </Link>
-        <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-medium transition-colors">
-          📊 Download Report
-        </button>
-        <Link 
-          to="/dashboard"
-          className="flex-1 bg-gray-600 hover:bg-gray-700 text-white text-center py-3 rounded-md font-medium transition-colors"
-        >
-          🏠 Back to Dashboard
-        </Link>
-      </div>
-    </div>
-  );
-};
 
 export default AnalysisPage;

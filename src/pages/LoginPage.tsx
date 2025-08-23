@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../config/api';
 
 const LoginPage = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin] = useState(true);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
