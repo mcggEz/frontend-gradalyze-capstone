@@ -340,7 +340,7 @@ const AnalysisPage = () => {
     }
   };
 
-  const handleResendTOR = async () => {
+  /* const handleResendTOR = async () => {
     if (!user.email) {
       alert('User email not found');
       return;
@@ -370,7 +370,7 @@ const AnalysisPage = () => {
         alert('❌ Failed to delete TOR data. Please try again.');
       }
     }
-  };
+  }; */
   const [existingCertificates, setExistingCertificates] = useState<any[]>([]);
   const [isCheckingTranscript, setIsCheckingTranscript] = useState(true);
 
@@ -825,7 +825,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
   const [uploadProgress, setUploadProgress] = useState(0);
   const [torUploaded, setTorUploaded] = useState(false);
   const [torUrl, setTorUrl] = useState<string | null>(null);
-  const [torStoragePath, setTorStoragePath] = useState<string | null>(null);
+  // const [torStoragePath, setTorStoragePath] = useState<string | null>(null);
 
   // File validation
   const validateFile = (file: File, type: 'transcript' | 'certificates'): boolean => {
@@ -1023,7 +1023,8 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
         const res = await uploadTranscript(uploadedFiles.transcript, email, userId);
         setTorUploaded(true);
         setTorUrl(res.tor_url || null);
-        setTorStoragePath(res.storage_path || null);
+        // storage path currently unused in UI; keeping assignment disabled to avoid unused state
+        // setTorStoragePath(res.storage_path || null);
         setUploadProgress(0);
         setHasNewFiles(true);
         
