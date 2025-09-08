@@ -33,26 +33,108 @@ const AnalysisPage = () => {
       const response = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const userData = await response.json();
+        console.log('Debug - User data from API:', userData);
         
-        // Check for existing transcript
+        // Check for existing archetype analysis data (highest priority)
+        // Check if any archetype percentage exists, not just primary_archetype
+        const hasArchetypeData = userData.archetype_realistic_percentage || 
+                                userData.archetype_investigative_percentage || 
+                                userData.archetype_artistic_percentage || 
+                                userData.archetype_social_percentage || 
+                                userData.archetype_enterprising_percentage || 
+                                userData.archetype_conventional_percentage;
+        
+        console.log('Debug - Archetype check:', {
+          hasArchetypeData,
+          archetype_analyzed_at: userData.archetype_analyzed_at,
+          realistic: userData.archetype_realistic_percentage,
+          investigative: userData.archetype_investigative_percentage,
+          artistic: userData.archetype_artistic_percentage,
+          social: userData.archetype_social_percentage,
+          enterprising: userData.archetype_enterprising_percentage,
+          conventional: userData.archetype_conventional_percentage
+        });
+        
+        if (hasArchetypeData && userData.archetype_analyzed_at) {
+          console.log('Found existing archetype analysis, auto-rendering results...');
+          
+          // Set existing transcript info
+          setExistingTranscript({
+            hasFile: !!userData.tor_url,
+            hasAnalysis: true,
+            uploadedAt: userData.tor_uploaded_at,
+            analyzedAt: userData.archetype_analyzed_at,
+            primaryArchetype: userData.primary_archetype
+          });
+          
+          // Set analysis data from database
+          const archetypeData = {
+            learning_archetype: {
+              archetype_percentages: {
+                realistic: userData.archetype_realistic_percentage || 0,
+                investigative: userData.archetype_investigative_percentage || 0,
+                artistic: userData.archetype_artistic_percentage || 0,
+                social: userData.archetype_social_percentage || 0,
+                enterprising: userData.archetype_enterprising_percentage || 0,
+                conventional: userData.archetype_conventional_percentage || 0
+              }
+            }
+          };
+          
+          setAnalysisData(archetypeData);
+          
+          // Also set the archetype percentages directly for easier access
+          setAnalysisData({
+            ...archetypeData,
+            archetype_percentages: {
+              realistic: userData.archetype_realistic_percentage || 0,
+              investigative: userData.archetype_investigative_percentage || 0,
+              artistic: userData.archetype_artistic_percentage || 0,
+              social: userData.archetype_social_percentage || 0,
+              enterprising: userData.archetype_enterprising_percentage || 0,
+              conventional: userData.archetype_conventional_percentage || 0
+            }
+          });
+          
+          // Try to parse existing analysis results
+          if (userData.tor_notes) {
+            try {
+              const analysisResults = JSON.parse(userData.tor_notes);
+              setAnalysisResults(analysisResults);
+            } catch (e) {
+              console.error('Error parsing existing analysis results:', e);
+            }
+          }
+          
+          // Skip directly to processing step to show results
+          setCurrentStep('processing');
+        }
+        
+        // Check for existing transcript but no analysis yet
         if (userData.tor_url || userData.tor_notes) {
           setExistingTranscript({
             hasFile: !!userData.tor_url,
             hasAnalysis: !!userData.tor_notes,
             uploadedAt: userData.tor_uploaded_at,
             analyzedAt: userData.archetype_analyzed_at,
-            primaryArchetype: userData.primary_archetype
+            primaryArchetype: userData.primary_archetype,
+            fileName: userData.tor_storage_path ? userData.tor_storage_path.split('/').pop() || 'transcript.pdf' : 'transcript.pdf'
           });
         }
         
-        // Check for existing certificates
+                // Check for existing certificates
         if (userData.certificate_paths && Array.isArray(userData.certificate_paths) && userData.certificate_paths.length > 0) {
-          setExistingCertificates(userData.certificate_paths.map((path: string, index: number) => ({
-            id: index,
-            path: path,
-            name: path.split('/').pop() || `Certificate ${index + 1}`,
-            uploadedAt: userData.certificate_uploaded_at || new Date().toISOString()
-          })));
+          console.log('Setting existing certificates:', userData.certificate_paths);
+          setExistingCertificates(userData.certificate_paths.map((path: string, index: number) => {
+            const fileName = path.split('/').pop() || `Certificate ${index + 1}`;
+            console.log(`Certificate ${index}: path=${path}, fileName=${fileName}`);
+            return {
+              id: index,
+              path: path,
+              name: fileName,
+              uploadedAt: userData.certificate_uploaded_at || new Date().toISOString()
+            };
+          }));
         }
       }
     } catch (error) {
@@ -63,15 +145,232 @@ const AnalysisPage = () => {
   };
 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-  const [currentStep, setCurrentStep] = useState<'upload' | 'validation' | 'processing'>('upload');
+  const [currentStep, setCurrentStep] = useState<'upload' | 'validation' | 'processing' | 'certificate-upload'>('upload');
   const [uploadedFiles, setUploadedFiles] = useState<{transcript: File | null, certificates: File[]}>({
     transcript: null,
     certificates: []
   });
   const [extractedGrades, setExtractedGrades] = useState<any[]>([]);
   const [analysisData, setAnalysisData] = useState<any>(null);
+  const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [existingTranscript, setExistingTranscript] = useState<any>(null);
+  const [hasNewFiles, setHasNewFiles] = useState(false);
+
+  // Handler functions for ProcessingStep
+  const handleSaveToDatabase = async () => {
+    if (!user.email) {
+      alert('User email not found');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // If we have existing analysis results, just save them directly
+      if (analysisResults) {
+        const response = await fetch('http://localhost:5000/api/analysis/save-existing-results', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: user.email,
+            analysisResults: analysisResults
+          })
+        });
+
+        const result = await response.json();
+        
+        if (result.saved_to_db) {
+          alert('✅ Analysis results saved to database successfully!');
+        } else {
+          alert('⚠️ Failed to save to database. Please try again later.');
+        }
+      } else {
+        // If no existing results, try to compute new ones
+        const response = await fetch('http://localhost:5000/api/analysis/compute-archetype', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            grades: extractedGrades,
+            email: user.email
+          })
+        });
+
+        const result = await response.json();
+        
+        if (result.saved_to_db) {
+          alert('✅ Analysis results saved to database successfully!');
+        } else {
+          alert('⚠️ Analysis completed but failed to save to database. Please try again later.');
+        }
+      }
+    } catch (error) {
+      console.error('Error saving to database:', error);
+      alert('❌ Failed to save to database. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddCertificates = async () => {
+    if (!user.email) {
+      alert('User email not found');
+      return;
+    }
+
+    // Go to certificate upload step without deleting existing TOR
+    setCurrentStep('certificate-upload');
+    setUploadedFiles({ transcript: null, certificates: [] });
+  };
+
+  const uploadCertificate = (file: File, email: string, userId?: number) => {
+    return new Promise<{ url: string; storage_path?: string }>((resolve, reject) => {
+      const form = new FormData();
+      form.append('email', email);
+      if (userId !== undefined && userId !== null) form.append('user_id', String(userId));
+      form.append('kind', 'certificate');
+      form.append('file', file, file.name);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', getApiUrl('UPLOAD_TOR'));
+      xhr.withCredentials = false;
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = () => {
+        try {
+          const json = JSON.parse(xhr.responseText || '{}');
+          if (xhr.status >= 200 && xhr.status < 300) resolve({ url: json.url, storage_path: json.storage_path });
+          else reject(new Error(json.message || 'Certificate upload failed'));
+        } catch {
+          reject(new Error('Invalid server response'));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(form);
+    });
+  };
+
+  const deleteCertificate = async (certificatePath: string, email: string) => {
+    try {
+      const response = await fetch(`${getApiUrl('UPLOAD_TOR')}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email,
+          certificate_path: certificatePath
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result;
+      } else {
+        throw new Error('Failed to delete certificate');
+      }
+    } catch (error) {
+      console.error('Error deleting certificate:', error);
+      throw error;
+    }
+  };
+
+  const refreshCertificates = async (email: string) => {
+    try {
+      console.log('Refreshing certificates for email:', email);
+      const response = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('User data received:', userData);
+        
+        if (userData.certificate_paths && Array.isArray(userData.certificate_paths) && userData.certificate_paths.length > 0) {
+          console.log('Setting certificates from refresh:', userData.certificate_paths);
+          setExistingCertificates(userData.certificate_paths.map((path: string, index: number) => {
+            const fileName = path.split('/').pop() || `Certificate ${index + 1}`;
+            console.log(`Certificate ${index}: path=${path}, fileName=${fileName}`);
+            return {
+              id: index,
+              path: path,
+              name: fileName,
+              uploadedAt: userData.certificate_uploaded_at || new Date().toISOString()
+            };
+          }));
+        } else {
+          console.log('No certificates found in user data');
+          setExistingCertificates([]);
+        }
+      } else {
+        console.error('Failed to fetch user data for certificate refresh');
+      }
+    } catch (error) {
+      console.error('Error refreshing certificates:', error);
+    }
+  };
+
+  const handleReanalyzeWithCertificates = async () => {
+    if (!user.email) {
+      alert('User email not found');
+      return;
+    }
+
+    try {
+      // Trigger re-analysis with new certificates
+      const response = await fetch(`${getApiUrl('DEV_COMPUTE_ARCHETYPE')}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: user.email }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Re-analysis completed:', result);
+        
+        // Refresh the user data to get updated archetype
+        await checkExistingTranscript(user.email);
+      } else {
+        alert('❌ Failed to re-analyze with new certificates. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error re-analyzing with certificates:', error);
+      alert('❌ Failed to re-analyze with new certificates. Please try again.');
+    }
+  };
+
+  const handleResendTOR = async () => {
+    if (!user.email) {
+      alert('User email not found');
+      return;
+    }
+
+    if (confirm('Are you sure you want to delete your current TOR and start over? This action cannot be undone.')) {
+      try {
+        // Call backend to delete TOR data
+        const response = await fetch(`http://localhost:5000/api/users/delete-tor?email=${encodeURIComponent(user.email)}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          // Reset state and go back to upload step
+          setCurrentStep('upload');
+          setUploadedFiles({ transcript: null, certificates: [] });
+          setExtractedGrades([]);
+          setAnalysisData(null);
+          setAnalysisResults(null);
+          setExistingTranscript(null);
+          alert('✅ TOR data deleted successfully. You can now upload a new transcript.');
+        } else {
+          alert('❌ Failed to delete TOR data. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error deleting TOR:', error);
+        alert('❌ Failed to delete TOR data. Please try again.');
+      }
+    }
+  };
   const [existingCertificates, setExistingCertificates] = useState<any[]>([]);
   const [isCheckingTranscript, setIsCheckingTranscript] = useState(true);
 
@@ -161,30 +460,6 @@ const AnalysisPage = () => {
             <span>Back to Dashboard</span>
           </Link>
         </div>
-        
-        {/* Progress Indicator */}
-        <div className="bg-gray-900 rounded-lg border border-gray-800 p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div className={`flex items-center space-x-2 ${currentStep === 'upload' ? 'text-blue-400' : currentStep === 'validation' || currentStep === 'processing' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'upload' ? 'bg-blue-500' : currentStep === 'validation' || currentStep === 'processing' ? 'bg-green-500' : 'bg-gray-600'}`}>
-                <span className="text-sm font-bold">1</span>
-              </div>
-              <span className="font-medium">Upload</span>
-            </div>
-            <div className={`flex items-center space-x-2 ${currentStep === 'validation' ? 'text-blue-400' : currentStep === 'processing' ? 'text-green-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'validation' ? 'bg-blue-500' : currentStep === 'processing' ? 'bg-green-500' : 'bg-gray-600'}`}>
-                <span className="text-sm font-bold">2</span>
-              </div>
-              <span className="font-medium">Validate</span>
-            </div>
-            <div className={`flex items-center space-x-2 ${currentStep === 'processing' ? 'text-blue-400' : 'text-gray-400'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${currentStep === 'processing' ? 'bg-blue-500' : 'bg-gray-600'}`}>
-                <span className="text-sm font-bold">3</span>
-              </div>
-              <span className="font-medium">Results</span>
-            </div>
-          </div>
-        </div>
 
         {/* Main Content Area */}
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
@@ -203,89 +478,331 @@ const AnalysisPage = () => {
             </div>
           )}
 
-          {/* Existing Transcript Found */}
-          {!isCheckingTranscript && existingTranscript && (
-            <div className="mb-8 bg-blue-900/20 border border-blue-700 rounded-lg p-6">
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+          {/* Uploaded Files Section - hide during upload step to avoid duplicates */}
+          {!isCheckingTranscript && currentStep !== 'upload' && (
+            <div className="mb-8 bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-white mb-6">📁 Uploaded Files</h3>
+              
+              <div className="space-y-4">
+                {/* Transcript */}
+                {existingTranscript?.hasFile ? (
+                  <div className="bg-gray-700 rounded-lg border border-gray-600 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-blue-300 mb-2">Existing Analysis Found</h3>
-                                    <div className="space-y-2 text-sm text-gray-300">
-                    {existingTranscript.hasFile && (
-                      <p>📄 <strong>Transcript:</strong> Uploaded on {new Date(existingTranscript.uploadedAt).toLocaleDateString()}</p>
-                    )}
+                        <div>
+                          <h4 className="font-semibold text-white">Transcript of Records</h4>
+                          <p className="text-sm text-gray-300">Uploaded on {new Date(existingTranscript.uploadedAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="px-2 py-1 bg-green-900 text-green-200 text-xs font-medium rounded-full">
+                          ✅ Uploaded
+                        </span>
                     {existingTranscript.hasAnalysis && (
-                      <p>🧠 <strong>Analysis:</strong> Completed on {new Date(existingTranscript.analyzedAt).toLocaleDateString()}</p>
-                    )}
-                    {existingTranscript.primaryArchetype && (
-                      <p>🎭 <strong>Primary Archetype:</strong> {existingTranscript.primaryArchetype.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</p>
-                    )}
+                          <span className="px-2 py-1 bg-blue-900 text-blue-200 text-xs font-medium rounded-full">
+                            🧠 Analyzed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Transcript File Name */}
+                    <div className="flex items-center justify-between p-2 bg-gray-600 rounded-md">
+                      <div className="flex items-center space-x-2">
+                        <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="text-sm text-white font-medium">
+                          {existingTranscript.fileName || 'transcript.pdf'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-700 rounded-lg border border-gray-600 p-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 bg-gray-500 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-gray-300">Transcript of Records</h4>
+                        <p className="text-sm text-gray-400">No transcript uploaded yet</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Certificates */}
+                <div className="bg-gray-700 rounded-lg border border-gray-600 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-12 h-12 ${existingCertificates.length > 0 ? 'bg-green-500' : 'bg-gray-500'} rounded-lg flex items-center justify-center`}>
+                        <svg className={`w-6 h-6 ${existingCertificates.length > 0 ? 'text-white' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className={`font-semibold ${existingCertificates.length > 0 ? 'text-white' : 'text-gray-300'}`}>Certificates</h4>
+                        <p className="text-sm text-gray-300">
+                          {existingCertificates.length > 0 
+                            ? `${existingCertificates.length} certificate(s) uploaded`
+                            : 'No certificates uploaded yet'
+                          }
+                        </p>
+                      </div>
+                    </div>
                     {existingCertificates.length > 0 && (
-                      <p>🏆 <strong>Certificates:</strong> {existingCertificates.length} certificate(s) uploaded</p>
+                      <span className="px-2 py-1 bg-green-900 text-green-200 text-xs font-medium rounded-full">
+                        ✅ {existingCertificates.length} Uploaded
+                      </span>
                     )}
                   </div>
-                  <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                   
+                  {/* Certificate File Names */}
+                  {existingCertificates.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                                            {existingCertificates.map((cert: any, index: number) => {
+                        console.log('Rendering certificate:', cert);
+                        return (
+                          <div key={cert.id || index} className="flex items-center justify-between p-2 bg-gray-600 rounded-md">
+                            <div className="flex items-center space-x-2">
+                              <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span className="text-sm text-white font-medium">{cert.name}</span>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                if (confirm(`Are you sure you want to delete "${cert.name}"?`)) {
+                                  try {
+                                                                      await deleteCertificate(cert.path, user.email);
+                                  // Refresh certificate data without page reload
+                                  await refreshCertificates(user.email);
+                                  } catch (error) {
+                                    console.error('Error deleting certificate:', error);
+                                    alert('❌ Failed to delete certificate. Please try again.');
+                                  }
+                                }
+                              }}
+                              className="text-red-400 hover:text-red-300 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                                                 );
+                       })}
+                    </div>
+          )}
+          
+                                    {/* Certificate Action Buttons */}
+                  <div className="flex gap-2">
                     <button
-                      onClick={() => {
-                        // Redirect to dossier page to view analysis results
-                        navigate('/dossier');
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                      onClick={() => refreshCertificates(user.email)}
+                      className="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
                     >
-                      📊 View Previous Analysis
+                      🔄 Refresh
                     </button>
-                    <button
-                      onClick={() => {
-                        setExistingTranscript(null);
-                        setCurrentStep('upload');
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length > 0) {
+                          try {
+                            console.log('Uploading certificates:', files);
+                            // Get user ID from localStorage
+                            const stored = localStorage.getItem('user');
+                            const parsedUser = stored ? (() => { try { return JSON.parse(stored) as any; } catch { return null; } })() : null;
+                            const userId = typeof parsedUser?.id === 'number' ? parsedUser.id : undefined;
+                            
+                            // Upload each certificate
+                            for (const file of files) {
+                              console.log('Uploading file:', file.name);
+                              const result = await uploadCertificate(file, user.email, userId);
+                              console.log('Upload result:', result);
+                            }
+                            // Set flag that new files were uploaded
+                            setHasNewFiles(true);
+                            // Refresh certificate data without page reload
+                            console.log('Refreshing certificates after upload...');
+                            await refreshCertificates(user.email);
+                            console.log('Certificate refresh completed');
+                          } catch (error) {
+                            console.error('Error uploading certificates:', error);
+                            alert('❌ Failed to upload certificates. Please try again.');
+                          }
+                        }
                       }}
-                      className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                      className="hidden"
+                      id="certificate-upload"
+                    />
+                    <label
+                      htmlFor="certificate-upload"
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center space-x-2 cursor-pointer"
                     >
-                      🔄 Upload New Transcript
-                    </button>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                      <span>Add Certificate</span>
+                    </label>
+                    {existingCertificates.length > 0 && (
+                  <button
+                        onClick={async () => {
+                          if (confirm('Are you sure you want to delete all certificates? This action cannot be undone.')) {
+                            try {
+                              // Delete all certificates one by one
+                              for (const cert of existingCertificates) {
+                                await deleteCertificate(cert.path, user.email);
+                              }
+                              // Refresh certificate data without page reload
+                              await refreshCertificates(user.email);
+                            } catch (error) {
+                              console.error('Error deleting certificates:', error);
+                              alert('❌ Failed to delete some certificates. Please try again.');
+                            }
+                          }
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>Delete All</span>
+                  </button>
+                    )}
                   </div>
+                    
+                  {/* Get Archetype Button - Show when new files are uploaded */}
+                  {hasNewFiles && (
+                    <div className="mt-3 pt-3 border-t border-gray-600">
+                  <button
+                        onClick={async () => {
+                          try {
+                            // Trigger archetype computation
+                            const response = await fetch(`${getApiUrl('DEV_COMPUTE_ARCHETYPE')}`, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({ email: user.email }),
+                            });
+
+                                                          if (response.ok) {
+                                const result = await response.json();
+                                console.log('Archetype computation completed:', result);
+                                alert('✅ Archetype analysis completed! Your results have been updated.');
+                                // Reset the new files flag since archetype has been computed
+                                setHasNewFiles(false);
+                                // Refresh the page to show updated archetype
+                                window.location.reload();
+                              } else {
+                                alert('❌ Failed to compute archetype. Please try again.');
+                              }
+                          } catch (error) {
+                            console.error('Error computing archetype:', error);
+                            alert('❌ Failed to compute archetype. Please try again.');
+                          }
+                        }}
+                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 py-3 rounded-md text-sm font-medium transition-colors flex items-center justify-center space-x-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                                                  <span>Recalculate Archetype</span>
+                  </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
-          
-          {/* Step 1: Upload */}
-          {!isCheckingTranscript && currentStep === 'upload' && (
-            <UploadStep 
-              uploadedFiles={uploadedFiles}
-              onFilesUploaded={(files) => {
-                setUploadedFiles(files);
-              }}
-              onOcrComplete={(grades) => setExtractedGrades(grades)}
-              onProceedToValidation={() => setCurrentStep('validation')}
-              existingTranscript={existingTranscript}
-              existingCertificates={existingCertificates}
-              setAnalysisData={setAnalysisData}
-            />
-          )}
 
-          {/* Step 2: Validation */}
+          {/* Content based on state */}
+          {!isCheckingTranscript && (
+            <>
+              {/* Validation Step */}
           {currentStep === 'validation' && (
             <ValidationStep 
               extractedGrades={extractedGrades}
               onValidationConfirmed={(confirmedGrades) => {
                 setExtractedGrades(confirmedGrades);
                 setCurrentStep('processing');
-                // Stay on analysis page to show results
               }}
+              setAnalysisResults={setAnalysisResults}
             />
           )}
 
-          {/* Step 4: Processing */}
-          {currentStep === 'processing' && (
-            <ProcessingStep analysisData={analysisData} />
+              {/* Results Step */}
+                  {currentStep === 'processing' && (
+          <ProcessingStep 
+            analysisData={analysisData} 
+            analysisResults={analysisResults}
+            onSaveToDatabase={handleSaveToDatabase}
+                  onResendTOR={handleAddCertificates}
+            isSaving={isSaving}
+          />
+        )}
+
+              {/* Certificate Upload Step */}
+              {currentStep === 'certificate-upload' && (
+                <CertificateUploadStep 
+                  user={user}
+                  onCertificatesUploaded={() => {
+                    alert('✅ Certificates uploaded successfully! Your archetype analysis will be updated to include the new certificates.');
+                    setCurrentStep('processing');
+                    handleReanalyzeWithCertificates();
+                  }}
+                />
+              )}
+
+              {/* Upload Step - Only if no existing analysis */}
+              {currentStep === 'upload' && !existingTranscript?.hasAnalysis && (
+                <UploadStep 
+                  uploadedFiles={uploadedFiles}
+                  onFilesUploaded={(files) => {
+                    setUploadedFiles(files);
+                  }}
+                  onOcrComplete={(grades) => setExtractedGrades(grades)}
+                  onProceedToValidation={() => setCurrentStep('validation')}
+                  existingTranscript={existingTranscript}
+                  existingCertificates={existingCertificates}
+                  setAnalysisData={setAnalysisData}
+                  setHasNewFiles={setHasNewFiles}
+                />
+              )}
+
+              {/* Show existing analysis message */}
+              {currentStep === 'upload' && existingTranscript?.hasAnalysis && (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">Analysis Already Complete!</h3>
+                  <p className="text-gray-400 mb-4">
+                    Your primary archetype is: <strong className="text-blue-300">{existingTranscript.primaryArchetype}</strong>
+                  </p>
+                  <button
+                    onClick={() => setCurrentStep('processing')}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                  >
+                    📊 View Analysis Results
+                  </button>
+                </div>
+              )}
+            </>
           )}
-
-
         </div>
       </main>
     </div>
@@ -293,14 +810,15 @@ const AnalysisPage = () => {
 };
 
 // Upload Step Component
-const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedToValidation, existingTranscript, existingCertificates, setAnalysisData }: { 
+const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedToValidation, existingTranscript, existingCertificates, setAnalysisData, setHasNewFiles }: { 
   uploadedFiles: {transcript: File | null, certificates: File[]}, 
   onFilesUploaded: (files: {transcript: File | null, certificates: File[]}) => void,
   onOcrComplete: (grades: any[]) => void,
   onProceedToValidation: () => void,
   existingTranscript?: any,
   existingCertificates?: any[],
-  setAnalysisData: (data: any) => void
+  setAnalysisData: (data: any) => void,
+  setHasNewFiles: (hasNew: boolean) => void
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [dragOver, setDragOver] = useState<'transcript' | 'certificates' | null>(null);
@@ -507,6 +1025,7 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
         setTorUrl(res.tor_url || null);
         setTorStoragePath(res.storage_path || null);
         setUploadProgress(0);
+        setHasNewFiles(true);
         
         // Automatically start OCR after successful upload
         if (res.storage_path) {
@@ -850,9 +1369,10 @@ const UploadStep = ({ uploadedFiles, onFilesUploaded, onOcrComplete, onProceedTo
 };
 
 // Validation Step Component (display as structured table grouped by semester)
-const ValidationStep = ({ extractedGrades, onValidationConfirmed: _onConfirm }: {
+const ValidationStep = ({ extractedGrades, onValidationConfirmed: _onConfirm, setAnalysisResults }: {
   extractedGrades: any[],
-  onValidationConfirmed: (grades: any[]) => void
+  onValidationConfirmed: (grades: any[]) => void,
+  setAnalysisResults: (results: any) => void
 }) => {
   const [editableData, setEditableData] = useState<any[]>([]);
   const [editingCell, setEditingCell] = useState<{rowIndex: number, field: string} | null>(null);
@@ -1101,15 +1621,17 @@ const ValidationStep = ({ extractedGrades, onValidationConfirmed: _onConfirm }: 
       const result = await response.json();
       console.log('Analysis processing result:', result);
 
-      // Check if data was saved to database
+      // Store results for later use
+      if (result.results) {
+        setAnalysisResults(result.results);
+      }
+
+      // Show feedback about database save
       if (result.saved_to_db) {
         console.log('✅ Analysis results saved to database successfully');
-        // Show success message
-        alert('✅ Analysis completed and saved to database successfully!');
       } else {
         console.log('⚠️ Analysis completed but database save failed:', result.db_error || 'Unknown error');
-        // Show warning message
-        alert('⚠️ Analysis completed but failed to save to database. Please try again later.');
+        // Still proceed even if database save failed
       }
 
       // Move to processing step
@@ -1516,7 +2038,19 @@ const ValidationStep = ({ extractedGrades, onValidationConfirmed: _onConfirm }: 
 // Admin Review flow removed per product change
 
 // Processing Step Component - Archetype Results
-const ProcessingStep = ({ analysisData }: { analysisData?: any }) => {
+const ProcessingStep = ({ 
+  analysisData, 
+  analysisResults, 
+  onSaveToDatabase, 
+  onResendTOR, 
+  isSaving 
+}: { 
+  analysisData?: any;
+  analysisResults?: any;
+  onSaveToDatabase: () => void;
+  onResendTOR: () => void;
+  isSaving: boolean;
+}) => {
   // Archetype definitions with colors and descriptions
   const archetypes = {
     realistic: {
@@ -1558,7 +2092,7 @@ const ProcessingStep = ({ analysisData }: { analysisData?: any }) => {
   };
 
   // Get archetype percentages from analysis data or use sample data
-  const archetypePercentages = analysisData?.learning_archetype?.archetype_percentages || {
+  const archetypePercentages = analysisData?.learning_archetype?.archetype_percentages || analysisData?.archetype_percentages || {
     realistic: 25,
     investigative: 30,
     artistic: 15,
@@ -1650,43 +2184,191 @@ const ProcessingStep = ({ analysisData }: { analysisData?: any }) => {
         </div>
       </div>
 
-      {/* Next Steps */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-        <h4 className="text-lg font-semibold text-white mb-3 text-center">What's Next?</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-          <div className="space-y-2">
-            <div className="w-12 h-12 bg-blue-500 rounded-full mx-auto flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6z" />
+      {/* Action Buttons */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <button
+          onClick={onSaveToDatabase}
+          disabled={isSaving}
+          className={`px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg font-semibold text-lg transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center justify-center ${isSaving ? 'opacity-75 cursor-not-allowed' : ''}`}
+        >
+          {isSaving ? (
+            <>
+              <svg className="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
+              Saving to Database...
+            </>
+          ) : (
+            <>
+              <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+              Save
+            </>
+          )}
+        </button>
+        
+
+      </div>
+
+
             </div>
-            <h5 className="font-medium text-white">Career Matches</h5>
-            <p className="text-sm text-gray-400">Discover jobs that match your archetype</p>
+  );
+};
+
+
+
+// Certificate Upload Step Component
+const CertificateUploadStep = ({ user, onCertificatesUploaded }: { 
+  user: any, 
+  onCertificatesUploaded: () => void 
+}) => {
+  const [certificates, setCertificates] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  const uploadCertificate = (file: File, email: string, userId?: number) => {
+    return new Promise<{ url: string; storage_path?: string }>((resolve, reject) => {
+      const form = new FormData();
+      form.append('email', email);
+      if (userId !== undefined && userId !== null) form.append('user_id', String(userId));
+      form.append('kind', 'certificate');
+      form.append('file', file, file.name);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', getApiUrl('UPLOAD_TOR'));
+      xhr.withCredentials = false;
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.onload = () => {
+        try {
+          const json = JSON.parse(xhr.responseText || '{}');
+          if (xhr.status >= 200 && xhr.status < 300) resolve({ url: json.url, storage_path: json.storage_path });
+          else reject(new Error(json.message || 'Certificate upload failed'));
+        } catch {
+          reject(new Error('Invalid server response'));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(form);
+    });
+  };
+
+  const handleCertificatesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setCertificates(files);
+  };
+
+  const handleUpload = async () => {
+    if (certificates.length === 0) {
+      alert('Please select at least one certificate to upload.');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    try {
+      for (let i = 0; i < certificates.length; i++) {
+        const file = certificates[i];
+        await uploadCertificate(file, user.email, user.id);
+        setUploadProgress(((i + 1) / certificates.length) * 100);
+      }
+      
+      onCertificatesUploaded();
+    } catch (error) {
+      console.error('Error uploading certificates:', error);
+      alert('❌ Failed to upload certificates. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <span className="text-2xl">📜</span>
           </div>
-          <div className="space-y-2">
-            <div className="w-12 h-12 bg-green-500 rounded-full mx-auto flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h5 className="font-medium text-white">Skills Analysis</h5>
-            <p className="text-sm text-gray-400">See your identified skills and strengths</p>
+          <h2 className="text-2xl font-bold mb-2">Add Certificates</h2>
+          <p className="text-gray-400">
+            Upload additional certificates to enhance your archetype analysis. 
+            Certificates will be included in the calculation of your learning archetype.
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          {/* Certificate Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Select Certificates
+            </label>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              onChange={handleCertificatesUpload}
+              disabled={isUploading}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Supported formats: PDF, DOC, DOCX, JPG, PNG (Max 5MB each)
+            </p>
           </div>
+
+          {/* Selected Files */}
+          {certificates.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium text-gray-300 mb-2">Selected Files:</h4>
           <div className="space-y-2">
-            <div className="w-12 h-12 bg-purple-500 rounded-full mx-auto flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                {certificates.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-800 rounded-md">
+                    <div className="flex items-center space-x-3">
+                      <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
+                      <span className="text-sm text-white">{file.name}</span>
             </div>
-            <h5 className="font-medium text-white">Company Matches</h5>
-            <p className="text-sm text-gray-400">Find companies that value your profile</p>
+                    <span className="text-xs text-gray-400">
+                      {(file.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+          </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Upload Progress */}
+          {isUploading && (
+          <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-300">Uploading certificates...</span>
+                <span className="text-gray-400">{Math.round(uploadProgress)}%</span>
+            </div>
+              <div className="w-full bg-gray-700 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-4">
+            <button
+              onClick={handleUpload}
+              disabled={isUploading || certificates.length === 0}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 rounded-md font-medium transition-colors"
+            >
+              {isUploading ? 'Uploading...' : 'Upload Certificates'}
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
 };
-
-
 
 export default AnalysisPage;

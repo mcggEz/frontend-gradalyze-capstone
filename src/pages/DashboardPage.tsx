@@ -50,11 +50,37 @@ const DashboardPage = () => {
       const response = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const data = await response.json();
-        if (data.primary_archetype) {
+        
+        // Check if we have any archetype data
+        const hasArchetypeData = data.archetype_realistic_percentage || 
+                                data.archetype_investigative_percentage || 
+                                data.archetype_artistic_percentage || 
+                                data.archetype_social_percentage || 
+                                data.archetype_enterprising_percentage || 
+                                data.archetype_conventional_percentage;
+        
+        if (hasArchetypeData) {
+          // Determine primary archetype from percentages if not set
+          let primaryArchetype = data.primary_archetype;
+          if (!primaryArchetype) {
+            const archetypes = [
+              { name: 'Realistic', value: data.archetype_realistic_percentage || 0 },
+              { name: 'Investigative', value: data.archetype_investigative_percentage || 0 },
+              { name: 'Artistic', value: data.archetype_artistic_percentage || 0 },
+              { name: 'Social', value: data.archetype_social_percentage || 0 },
+              { name: 'Enterprising', value: data.archetype_enterprising_percentage || 0 },
+              { name: 'Conventional', value: data.archetype_conventional_percentage || 0 }
+            ];
+            const highest = archetypes.reduce((prev, current) => 
+              (prev.value > current.value) ? prev : current
+            );
+            primaryArchetype = highest.name;
+          }
+          
           setUserArchetype({
-            primary: data.primary_archetype,
+            primary: primaryArchetype,
             analyzedAt: data.archetype_analyzed_at,
-            hasAnalysis: !!data.tor_notes,
+            hasAnalysis: !!data.tor_notes || hasArchetypeData,
             archetype_realistic_percentage: data.archetype_realistic_percentage || 0,
             archetype_investigative_percentage: data.archetype_investigative_percentage || 0,
             archetype_artistic_percentage: data.archetype_artistic_percentage || 0,
@@ -308,12 +334,15 @@ const DashboardPage = () => {
                 {/* Quick Stats */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-gray-400 text-sm">Archetype</span>
+                    <span className="text-gray-400 text-sm">Primary Archetype</span>
                     {archetypeLoading ? (
                       <div className="h-4 bg-gray-700 rounded animate-pulse w-16"></div>
                     ) : userArchetype ? (
                       <span className="font-medium text-green-400">
-                        {userArchetype.primary.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        {userArchetype.primary ? 
+                          userArchetype.primary.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) :
+                          'Analyzed'
+                        }
                       </span>
                     ) : (
                       <span className="font-medium text-yellow-400">Pending</span>
@@ -346,33 +375,41 @@ const DashboardPage = () => {
               
               <p className="text-gray-300 mb-2">{user.course || 'Course'}{user.student_number ? ` • ${user.student_number}` : ''}</p>
               
-              <p className="text-gray-400 mb-8 max-w-md mx-auto">
-                Ready to discover your learning archetype? Upload your transcript to get personalized insights about your academic journey.
-              </p>
-              
-              <Link 
-                to="/analysis"
-                className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                <span>Get Started</span>
-              </Link>
+              {userArchetype?.primary ? (
+                <div className="mb-6">
+                  <p className="text-gray-400 mb-2">Your Primary Archetype:</p>
+                  <div className="inline-flex items-center px-4 py-2 bg-blue-600/20 border border-blue-500/50 rounded-full">
+                    <span className="text-blue-300 font-semibold text-lg">
+                      {userArchetype.primary}
+                    </span>
+                  </div>
+                  <p className="text-gray-400 mt-4 max-w-md mx-auto">
+                    Your archetype analysis is complete! Explore your personalized career recommendations and job matches below.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-gray-400 mb-8 max-w-md mx-auto">
+                    Ready to discover your learning archetype? Upload your transcript to get personalized insights about your academic journey.
+                  </p>
+                  <Link 
+                    to="/analysis"
+                    className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md font-medium transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <span>Get Started</span>
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Jobs Feed - Only show if user has transcript */}
             {userArchetype?.hasAnalysis && (
               <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4">
                   <h3 className="text-lg font-bold">Recommended Jobs</h3>
-                  <button
-                    onClick={scrapeJobs}
-                    disabled={scrapingJobs}
-                    className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {scrapingJobs ? 'Scraping...' : 'Get Jobs'}
-                  </button>
                 </div>
                 <div className="space-y-3">
                   {jobs.map(renderJobCard)}
@@ -452,45 +489,7 @@ const DashboardPage = () => {
               )}
             </div>
 
-            {/* Companies Hiring */}
-            <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-              <h3 className="font-bold mb-4">Companies Hiring for You</h3>
-              {companiesLoading ? (
-              <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gray-700 rounded animate-pulse"></div>
-                      <div className="flex-1">
-                        <div className="h-4 bg-gray-700 rounded animate-pulse w-24 mb-1"></div>
-                        <div className="h-3 bg-gray-700 rounded animate-pulse w-20"></div>
-                  </div>
-                </div>
-                  ))}
-                </div>
-              ) : hiringCompanies.length > 0 ? (
-                <div className="space-y-3">
-                  {hiringCompanies.map((company, index) => (
-                    <div key={index} className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 rounded flex items-center justify-center ${
-                        index === 0 ? 'bg-blue-500' : index === 1 ? 'bg-red-500' : 'bg-green-500'
-                      }`}>
-                        <span className="text-white text-xs font-bold">
-                          {company.name.split(' ').map((word: string) => word[0]).join('').toUpperCase()}
-                        </span>
-                  </div>
-                  <div>
-                        <p className="text-sm font-medium">{company.name}</p>
-                        <p className="text-xs text-gray-400">{company.job_count} new position{company.job_count !== 1 ? 's' : ''}</p>
-                  </div>
-                </div>
-                  ))}
-                  </div>
-              ) : (
-                <div className="text-center py-4">
-                  <p className="text-gray-400 text-sm">No relevant companies found. Try refreshing job data.</p>
-                  </div>
-              )}
-            </div>
+
           </div>
         </div>
         )}

@@ -1,70 +1,78 @@
 # Gradalyze Frontend
 
-This is the frontend application for the Gradalyze academic profiling and career recommendation system.
+Frontend for the Gradalyze academic profiling and career recommendation platform.
 
-## Environment Setup
+## Quickstart
 
-### Development
-Create a `.env` file in the root directory with the following variables:
+1. Install dependencies
+   ```bash
+   npm install
+   ```
 
-```env
-VITE_API_BASE_URL=http://localhost:5000
-VITE_NODE_ENV=development
+2. Configure environment
+   Create `.env` for development in `frontend/`:
+   ```env
+   VITE_API_BASE_URL=http://localhost:5000
+   VITE_NODE_ENV=development
+   ```
+   Optionally, create `.env.production` for production builds:
+   ```env
+   VITE_API_BASE_URL=https://your-backend-url.com
+   VITE_NODE_ENV=production
+   ```
+
+3. Start the app
+   ```bash
+   npm run dev
+   # app runs on http://localhost:5173 by default
+   ```
+
+## Scripts
+
+- `npm run dev` – start Vite dev server
+- `npm run build` – production build
+- `npm run preview` – preview production build locally
+
+## Configuration
+
+- API base URL is configured via environment variables in `src/config/api.ts`.
+- You can set `VITE_API_BASE_URL` to point to your backend.
+
+## Project Structure
+
 ```
-
-### Production
-Create a `.env.production` file in the root directory with the following variables:
-
-```env
-VITE_API_BASE_URL=https://your-backend-url.com
-VITE_NODE_ENV=production
+frontend/
+  src/
+    pages/           # Route pages (Dashboard, Analysis, etc.)
+    components/      # Reusable UI components
+    admin/           # Admin-specific screens
+    config/          # API config and helpers
+    main.tsx         # App bootstrap
 ```
-
-## Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-
-## API Configuration
-
-The application uses a centralized API configuration located in `src/config/api.ts`. This file contains:
-
-- Base URL configuration from environment variables
-- All API endpoint definitions
-- Helper functions for building API URLs
-
-## Deployment
-
-### Vercel Deployment
-
-1. Connect your repository to Vercel
-2. Set the following environment variables in Vercel:
-   - `VITE_API_BASE_URL` - Your backend API URL
-   - `VITE_NODE_ENV` - Set to `production`
-
-3. Deploy using the Vercel dashboard or CLI
-
-### Environment Variables
-
-The application uses the following environment variables:
-
-- `VITE_API_BASE_URL` - The base URL for the backend API
-- `VITE_NODE_ENV` - The environment (development/production)
 
 ## Features
 
-- User authentication (login/signup)
+- Authentication (login/signup)
 - Academic document upload and analysis
 - Learning archetype identification
 - Career and job recommendations
 - Personalized dashboard
 - Professional dossier generation
 
-## Tech Stack
+## Deployment
 
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- React Router
+### Vercel
+1. Connect the repo
+2. Configure env vars:
+   - `VITE_API_BASE_URL` – backend API URL
+   - `VITE_NODE_ENV=production`
+3. Deploy via dashboard or CLI
+
+### Static hosting
+- Run `npm run build`. Deploy `dist/` to your static host (e.g., Netlify, S3+CloudFront).
+
+## Troubleshooting
+
+- CORS errors: ensure backend enables CORS and `VITE_API_BASE_URL` is correct.
+- 404 on refresh: configure host to fallback to `index.html` for SPA routing.
+- Env not picked up: restart dev server after changing `.env` files.

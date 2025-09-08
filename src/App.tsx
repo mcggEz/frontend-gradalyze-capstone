@@ -7,6 +7,8 @@ import DashboardPage from './pages/DashboardPage'
 import AnalysisPage from './pages/AnalysisPage'
 import DossierPage from './pages/DossierPage'
 import SettingsPage from './pages/SettingsPage'
+import NotFoundPage from './pages/NotFoundPage'
+import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   return (
@@ -15,10 +17,28 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/analysis" element={<AnalysisPage />} />
-        <Route path="/dossier" element={<DossierPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/analysis" element={
+          <ProtectedRoute>
+            <AnalysisPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/dossier" element={
+          <ProtectedRoute>
+            <DossierPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/settings" element={
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        } />
+        {/* 404 Catch-all route */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   )

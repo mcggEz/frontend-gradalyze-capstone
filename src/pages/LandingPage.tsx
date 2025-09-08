@@ -11,12 +11,7 @@ const LandingPage = () => {
               <h1 className="text-lg sm:text-xl font-bold">Gradalyze</h1>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              <Link 
-                to="/login" 
-                className="text-gray-300 hover:text-white transition-colors text-sm sm:text-base"
-              >
-                Sign In
-              </Link>
+       
               <Link 
                 to="/login" 
                 className="bg-white text-black px-3 py-2 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium hover:bg-gray-100 transition-colors"
