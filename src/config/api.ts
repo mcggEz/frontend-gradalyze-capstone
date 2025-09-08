@@ -4,7 +4,7 @@ export const API_CONFIG = {
   ENDPOINTS: {
     // Auth endpoints
     LOGIN: '/api/auth/login',
-    SIGNUP: '/api/auth/signup',
+    SIGNUP: '/api/auth/register',
     PROFILE_BY_EMAIL: '/api/auth/profile-by-email',
     
     // User endpoints
