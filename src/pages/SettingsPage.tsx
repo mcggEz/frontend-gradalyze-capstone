@@ -78,19 +78,19 @@ const SettingsPage = () => {
                         to="/analysis"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                       >
-                        📊 Analysis Results
+                        Analysis Results
                       </Link>
                       <Link 
                         to="/dossier"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                       >
-                        📋 My Dossier
+                        My Dossier
                       </Link>
                       <Link 
                         to="/settings"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                       >
-                        ⚙️ Settings
+                        Settings
                       </Link>
                       <div className="border-t border-gray-700 mt-2 pt-2">
                         <Link 
@@ -124,7 +124,7 @@ const SettingsPage = () => {
         </div>
         
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
-          <h2 className="text-2xl font-bold mb-6">⚙️ Settings</h2>
+          <h2 className="text-2xl font-bold mb-6">Settings</h2>
           <div className="space-y-6">
             {/* Profile Settings */}
             <div className="border-b border-gray-700 pb-6">
@@ -179,10 +179,10 @@ const SettingsPage = () => {
                   📥 Download My Data
                 </button>
                 <button className="w-full text-left px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors">
-                  🔄 Reset Recommendations
+                  Reset Recommendations
                 </button>
                 <button className="w-full text-left px-4 py-3 bg-red-900 hover:bg-red-800 text-red-300 rounded-md transition-colors">
-                  🗑️ Delete Account
+                  Delete Account
                 </button>
               </div>
             </div>

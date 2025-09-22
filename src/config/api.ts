@@ -10,6 +10,7 @@ export const API_CONFIG = {
     // User endpoints
     USERS: '/api/users',
     UPLOAD_TOR: '/api/users/upload-tor',
+    DELETE_TOR: '/api/users/delete-tor',
     UPLOAD_CERTIFICATES: '/api/users/upload-certificates',
     EXTRACT_GRADES: '/api/users/extract-grades',
     

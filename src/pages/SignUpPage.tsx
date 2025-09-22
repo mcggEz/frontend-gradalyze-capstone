@@ -19,11 +19,36 @@ const SignUpPage = () => {
   
   const navigate = useNavigate();
 
+  // Sanitizers
+  const onlyLetters = (v: string) => v.replace(/[^a-zA-Z\s\-']/g, '');
+  const onlyLettersCompact = (v: string) => v.replace(/[^a-zA-Z]/g, '');
+  const onlyAlphanum = (v: string) => v.replace(/[^a-zA-Z0-9]/g, '');
+  const onlyDigits = (v: string) => v.replace(/[^0-9]/g, '');
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    let sanitized = value;
+    switch (name) {
+      case 'firstName':
+      case 'middleName':
+      case 'lastName':
+        sanitized = onlyLetters(value);
+        break;
+      case 'extension':
+        // Allow roman numerals or short alphabetic tokens
+        sanitized = onlyLettersCompact(value).toUpperCase().slice(0, 5);
+        break;
+      case 'studentNumber':
+        sanitized = onlyDigits(value).slice(0, 9);
+        break;
+      case 'email':
+        // Keep common email characters only
+        sanitized = value.replace(/[^a-zA-Z0-9@._+-]/g, '');
+        break;
+      default:
+        break;
+    }
+    setFormData({ ...formData, [name]: sanitized });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,13 +69,13 @@ const SignUpPage = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName: formData.firstName,
-          middleName: formData.middleName,
-          lastName: formData.lastName,
-          extension: formData.extension,
-          studentNumber: formData.studentNumber,
+          firstName: formData.firstName.trim(),
+          middleName: formData.middleName.trim(),
+          lastName: formData.lastName.trim(),
+          extension: formData.extension.trim(),
+          studentNumber: formData.studentNumber.trim(),
           course: formData.course,
-          email: formData.email,
+          email: formData.email.trim(),
           password: formData.password
         })
       });
@@ -70,30 +95,24 @@ const SignUpPage = () => {
   const courses = [
     'BS Information Technology',
     'BS Computer Science',
-    'BS Information Systems',
     'BS Computer Engineering',
-    'BS Electronics Engineering',
-    'BS Civil Engineering',
-    'BS Mechanical Engineering',
-    'BS Architecture',
-    'BS Business Administration',
-    'BS Accountancy',
-    'BS Tourism Management',
-    'BS Psychology',
-    'BS Biology',
-    'BS Chemistry',
-    'BS Mathematics'
   ];
 
   return (
     <div className="min-h-screen bg-gray-950 py-8 px-4 text-white">
+      {/* Back to home (fixed top-left) */}
+      <Link to="/" className="fixed top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm shadow">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        Back to home
+      </Link>
       <div className="max-w-lg mx-auto">
+
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <Link to="/" className="text-3xl font-bold text-gray-800 mb-2 block">
             Gradalyze
           </Link>
-          <h1 className="text-2xl font-bold text-yellow-600 mb-4">Create Account</h1>
+          <h1 className="text-2xl font-bold text-yellow-600">Create Account</h1>
         </div>
 
         {/* Form Card */}
@@ -188,6 +207,8 @@ const SignUpPage = () => {
                     name="studentNumber"
                     value={formData.studentNumber}
                     onChange={handleInputChange}
+                    inputMode="numeric"
+                    maxLength={9}
                     className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white"
                     placeholder="202512345"
                     required
@@ -326,13 +347,6 @@ const SignUpPage = () => {
                 Sign in
               </Link>
             </p>
-          </div>
-
-          {/* Back to home */}
-          <div className="mt-4 text-center">
-            <Link to="/" className="text-gray-500 hover:text-gray-600 text-sm">
-              ← Back to home
-            </Link>
           </div>
         </div>
       </div>

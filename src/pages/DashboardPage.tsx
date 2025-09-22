@@ -44,6 +44,21 @@ const DashboardPage = () => {
     }
   };
 
+  const toFriendlyArchetype = (raw: string | undefined | null) => {
+    if (!raw) return undefined;
+    const key = String(raw).toLowerCase().replace(/\s+/g, '_');
+    const map: Record<string, string> = {
+      realistic: 'Applied Practitioner',
+      investigative: 'Analytical Thinker',
+      artistic: 'Creative Innovator',
+      social: 'Collaborative Supporter',
+      enterprising: 'Strategic Leader',
+      conventional: 'Methodical Organizer'
+    };
+    // Already friendly? return as-is
+    return map[key] || raw;
+  };
+
   const fetchUserArchetype = async (email: string) => {
     setArchetypeLoading(true);
     try {
@@ -76,9 +91,11 @@ const DashboardPage = () => {
             );
             primaryArchetype = highest.name;
           }
-          
+          // Convert to friendly label that matches the sidebar naming
+          const friendlyPrimary = toFriendlyArchetype(primaryArchetype);
+
           setUserArchetype({
-            primary: primaryArchetype,
+            primary: friendlyPrimary,
             analyzedAt: data.archetype_analyzed_at,
             hasAnalysis: !!data.tor_notes || hasArchetypeData,
             archetype_realistic_percentage: data.archetype_realistic_percentage || 0,
@@ -279,21 +296,21 @@ const DashboardPage = () => {
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                         onClick={() => setShowProfileDropdown(false)}
                       >
-                        📊 Analysis Results
+                        Analysis Results
                       </Link>
                       <Link 
                         to="/dossier"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                         onClick={() => setShowProfileDropdown(false)}
                       >
-                        📋 My Dossier
+                        My Dossier
                       </Link>
                       <Link 
                         to="/settings"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                         onClick={() => setShowProfileDropdown(false)}
                       >
-                        ⚙️ Settings
+                        Settings
                       </Link>
                       <div className="border-t border-gray-700 mt-2 pt-2">
                         <button
@@ -365,9 +382,7 @@ const DashboardPage = () => {
           <div className="lg:col-span-2 space-y-6">
                         {/* Simple Welcome Card */}
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-8 text-center">
-              <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <span className="text-2xl">🎓</span>
-                </div>
+              <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-6" />
               
               <h2 className="text-2xl font-bold mb-2">
                 Welcome back, <span className="text-blue-400">{(user.name || 'User').split(' ')[0]}</span>!
@@ -509,7 +524,7 @@ const DashboardPage = () => {
               </button>
             </div>
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
-              <h2 className="text-2xl font-bold mb-6">📊 Academic Analysis</h2>
+              <h2 className="text-2xl font-bold mb-6">Academic Analysis</h2>
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -549,7 +564,7 @@ const DashboardPage = () => {
             </div>
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">📋 My Professional Dossier</h2>
+                <h2 className="text-2xl font-bold">My Professional Dossier</h2>
                 <div className="flex space-x-3">
                   <button className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
                     Generate PDF
@@ -624,7 +639,7 @@ const DashboardPage = () => {
               </button>
             </div>
             <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
-              <h2 className="text-2xl font-bold mb-6">⚙️ Settings</h2>
+              <h2 className="text-2xl font-bold mb-6">Settings</h2>
               <div className="space-y-6">
                 {/* Profile Settings */}
                 <div className="border-b border-gray-700 pb-6">
@@ -677,10 +692,10 @@ const DashboardPage = () => {
                       📥 Download My Data
                     </button>
                     <button className="w-full text-left px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors">
-                      🔄 Reset Recommendations
+                      Reset Recommendations
                     </button>
                     <button className="w-full text-left px-4 py-3 bg-red-900 hover:bg-red-800 text-red-300 rounded-md transition-colors">
-                      🗑️ Delete Account
+                      Delete Account
                     </button>
                   </div>
                 </div>

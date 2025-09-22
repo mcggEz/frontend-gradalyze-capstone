@@ -81,19 +81,19 @@ const DossierPage = () => {
                         to="/analysis"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                       >
-                        📊 Analysis Results
+                        Analysis Results
                       </Link>
                       <Link 
                         to="/dossier"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                       >
-                        📋 My Dossier
+                        My Dossier
                       </Link>
                       <Link 
                         to="/settings"
                         className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800 transition-colors"
                       >
-                        ⚙️ Settings
+                        Settings
                       </Link>
                       <div className="border-t border-gray-700 mt-2 pt-2">
                         <Link 
@@ -128,7 +128,7 @@ const DossierPage = () => {
         
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">📋 My Professional Dossier</h2>
+            <h2 className="text-2xl font-bold">My Professional Dossier</h2>
             <div className="flex space-x-3">
               <button className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
                 Generate PDF
@@ -154,7 +154,7 @@ const DossierPage = () => {
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border border-blue-200">
                 <div className="flex items-center space-x-4 mb-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                    <span className="text-xl text-white">🧠</span>
+                    <span className="text-xl text-white"></span>
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-gray-900">{analysisData.archetype.type}</h3>

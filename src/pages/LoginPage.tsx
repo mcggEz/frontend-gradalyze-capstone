@@ -52,7 +52,13 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+      {/* Back to home (fixed top-left) */}
+      <Link to="/" className="fixed top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-sm shadow">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        Back to home
+      </Link>
       <div className="max-w-md w-full">
+
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="text-2xl font-bold">Gradalyze</Link>
@@ -209,13 +215,6 @@ const LoginPage = () => {
                 Sign up
               </Link>
             </p>
-          </div>
-
-          {/* Back to home */}
-          <div className="mt-4 text-center">
-            <Link to="/" className="text-gray-400 hover:text-gray-300 text-sm">
-              ← Back to home
-            </Link>
           </div>
         </div>
       </div>
