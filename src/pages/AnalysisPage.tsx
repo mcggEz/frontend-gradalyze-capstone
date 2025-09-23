@@ -11,7 +11,7 @@ type ExistingTranscript = {
 
 type ExistingCertificate = {
   id: number;
-  path: string;
+  path?: string;
   name: string;
   url: string;
   _temp?: boolean;
@@ -42,6 +42,46 @@ const AnalysisPage = () => {
   const [blobUrls, setBlobUrls] = useState<string[]>([]);
   const [tempTranscriptSizeKB, setTempTranscriptSizeKB] = useState<number | null>(null);
 
+  // Archetype summary state
+  const [primaryArchetype, setPrimaryArchetype] = useState<string>('');
+  const [archetypePercents, setArchetypePercents] = useState<{
+    realistic?: number; investigative?: number; artistic?: number; social?: number; enterprising?: number; conventional?: number;
+  }>({});
+
+  // Static descriptions for each RIASEC type (tailored for IT/CS)
+  const archetypeInfo: Record<string, { title: string; indicators: string; roles: string } > = {
+    realistic: {
+      title: 'Applied Practitioner',
+      indicators: 'Strong performance in hardware/networking, systems installation, and applied labs',
+      roles: 'Hardware technician, network engineer, systems administrator'
+    },
+    investigative: {
+      title: 'Analytical Thinker',
+      indicators: 'High achievement in math, algorithms, data structures, ML/AI, and research projects',
+      roles: 'Data scientist, AI/ML engineer, systems analyst, researcher'
+    },
+    artistic: {
+      title: 'Creative Innovator',
+      indicators: 'Excellence in UI/UX, multimedia apps, creative coding, and human-computer interaction',
+      roles: 'UI/UX designer, game developer, digital media specialist, software engineer'
+    },
+    social: {
+      title: 'Collaborative Supporter',
+      indicators: 'Strong performance in communication-intensive subjects, teamwork-driven projects, and IT support',
+      roles: 'IT support specialist, systems trainer, academic tutor, community IT facilitator'
+    },
+    enterprising: {
+      title: 'Strategic Leader',
+      indicators: 'Success in project management, entrepreneurship subjects, and leadership tasks',
+      roles: 'IT project manager, tech entrepreneur, product manager, team lead'
+    },
+    conventional: {
+      title: 'Methodical Organizer',
+      indicators: 'High performance in database management, information systems, documentation, and structured coding',
+      roles: 'Database administrator, systems auditor, QA tester, technical writer'
+    }
+  };
+
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (stored) {
@@ -58,11 +98,6 @@ const AnalysisPage = () => {
     };
   }, []);
 
-  const buildPublicUrl = (bucketEnvKey: string, fallbackBucket: string, path: string | undefined | null) => {
-    if (!path) return undefined;
-    const bucket = (import.meta.env[bucketEnvKey] as string) || fallbackBucket;
-    return `${API_CONFIG.BASE_URL}/storage/v1/object/public/${bucket}/${path}`;
-  };
 
   const normalizeToRows = (raw: any[]): GradeRow[] => {
     if (!Array.isArray(raw)) return [];
@@ -83,13 +118,16 @@ const AnalysisPage = () => {
       if (!res.ok) throw new Error('Failed to load profile');
       const data = await res.json();
 
-      // Transcript (treat empty strings/null as no file)
-      const hasTor = !!(typeof data.tor_url === 'string' && data.tor_url.trim() !== '') || !!(typeof data.tor_storage_path === 'string' && data.tor_storage_path.trim() !== '');
+      // Transcript - only show if we have both URL and storage path (more strict check)
+      const hasValidTorUrl = !!(typeof data.tor_url === 'string' && data.tor_url.trim() !== '');
+      const hasValidTorPath = !!(typeof data.tor_storage_path === 'string' && data.tor_storage_path.trim() !== '');
+      const hasTor = hasValidTorUrl && hasValidTorPath;
+      
       if (hasTor) {
-        const url: string | undefined = (data.tor_url && data.tor_url.trim()) || buildPublicUrl('VITE_TOR_BUCKET', 'transcripts', data.tor_storage_path);
-        setExistingTranscript({
+        const url: string = data.tor_url.trim();
+          setExistingTranscript({
           hasFile: true,
-          fileName: data.tor_storage_path ? (data.tor_storage_path.split('/').pop() || 'transcript.pdf') : 'transcript.pdf',
+          fileName: data.tor_storage_path.split('/').pop() || 'transcript.pdf',
           url,
         });
       } else {
@@ -121,55 +159,84 @@ const AnalysisPage = () => {
       };
 
       const bucket = (import.meta.env.VITE_CERT_BUCKET as string) || 'certificates';
-      const pathToUrl = (p: string) => `${API_CONFIG.BASE_URL}/storage/v1/object/public/${bucket}/${p}`;
 
       const paths = toArray(data.certificate_paths);
       const urls = toArray(data.certificate_urls);
 
-      const items: { id: number; path?: string; url: string; name: string; _temp?: boolean }[] = [];
+      type CertItem = { id: number; path?: string; url: string; name: string; _temp?: boolean };
+      const items: CertItem[] = [];
+
+      // helper to extract a normalized storage path from a public URL
+      const extractPathFromUrl = (u: string): string | undefined => {
+        try {
+          const marker = `/${bucket}/`;
+          const idx = u.indexOf(marker);
+          if (idx !== -1) {
+            return u.substring(idx + marker.length);
+          }
+          // fallback: try last two segments
+          const urlObj = new URL(u);
+          const parts = urlObj.pathname.split('/').filter(Boolean);
+          if (parts.length >= 2) {
+            return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+          }
+        } catch {}
+        return undefined;
+      };
+
+      const seenKeys = new Set<string>();
+      const pushIfNew = (item: CertItem) => {
+        const key = item.path || extractPathFromUrl(item.url) || item.url;
+        if (!key || seenKeys.has(key)) return;
+        seenKeys.add(key);
+        items.push({ ...item, id: items.length });
+      };
 
       // from paths
       paths.forEach((p) => {
         if (!p || p.startsWith('temp/')) return;
-        const url = pathToUrl(p);
         const name = p.split('/').pop() || 'Certificate';
-        items.push({ id: items.length, path: p, url, name });
+        // url is optional for our UI; keep empty to avoid mismatched dedupe keys
+        pushIfNew({ id: 0, path: p, url: '', name });
       });
 
       // from urls
       urls.forEach((u) => {
         if (!u) return;
         const name = u.split('/').pop() || 'Certificate';
-        items.push({ id: items.length, url: u, name });
+        pushIfNew({ id: 0, url: u, name });
       });
 
       // latest fields
       if (typeof data.latest_certificate_path === 'string' && data.latest_certificate_path.trim() !== '') {
         const p = data.latest_certificate_path as string;
         if (!paths.includes(p)) {
-          const url = pathToUrl(p);
           const name = p.split('/').pop() || 'Certificate';
-          items.push({ id: items.length, path: p, url, name });
+          pushIfNew({ id: 0, path: p, url: '', name });
         }
       }
       if (typeof data.latest_certificate_url === 'string' && data.latest_certificate_url.trim() !== '') {
         const u = data.latest_certificate_url as string;
         if (!urls.includes(u)) {
           const name = u.split('/').pop() || 'Certificate';
-          items.push({ id: items.length, url: u, name });
+          pushIfNew({ id: 0, url: u, name });
         }
       }
 
-      // dedupe by url
-      const seen = new Set<string>();
-      const deduped = items.filter((it) => {
-        const key = it.url;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      }).map((it, idx) => ({ ...it, id: idx }));
+      const deduped = items.map((it, idx) => ({ ...it, id: idx }));
 
       setExistingCertificates(deduped);
+
+      // Capture archetype percentages for summary
+      setPrimaryArchetype(String(data.primary_archetype || ''));
+      setArchetypePercents({
+        realistic: typeof data.archetype_realistic_percentage === 'number' ? data.archetype_realistic_percentage : undefined,
+        investigative: typeof data.archetype_investigative_percentage === 'number' ? data.archetype_investigative_percentage : undefined,
+        artistic: typeof data.archetype_artistic_percentage === 'number' ? data.archetype_artistic_percentage : undefined,
+        social: typeof data.archetype_social_percentage === 'number' ? data.archetype_social_percentage : undefined,
+        enterprising: typeof data.archetype_enterprising_percentage === 'number' ? data.archetype_enterprising_percentage : undefined,
+        conventional: typeof data.archetype_conventional_percentage === 'number' ? data.archetype_conventional_percentage : undefined,
+      });
     } catch (e) {
       console.error(e);
       // Clear UI to reflect unknown/empty state rather than showing stale items
@@ -206,9 +273,12 @@ const AnalysisPage = () => {
       form.append('kind', 'tor');
       form.append('file', file, file.name);
 
+      console.log('[TOR_UPLOAD] posting', { name: file.name, type: file.type, size: file.size });
       const up = await fetch(getApiUrl('UPLOAD_TOR'), { method: 'POST', body: form });
-      const j = await up.json().catch(() => ({}));
-      if (!up.ok) throw new Error(j.message || `Upload failed with status ${up.status}`);
+      const torText = await up.text();
+      let j: any = {}; try { j = torText ? JSON.parse(torText) : {}; } catch {}
+      console.log('[TOR_UPLOAD] response', { status: up.status, ok: up.ok, body: j || torText });
+      if (!up.ok) throw new Error((j && j.message) || `Upload failed with status ${up.status}`);
 
       // Trigger OCR and capture any returned grades
       if (j.storage_path) {
@@ -237,11 +307,16 @@ const AnalysisPage = () => {
     setGrades([]);
     setShowGrades(false);
     try {
+      console.log('[DELETE_TOR] starting', { email: user.email });
       const res = await fetch(`${getApiUrl('DELETE_TOR')}?email=${encodeURIComponent(user.email)}`, { method: 'DELETE' });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || 'Failed to delete transcript');
+      const text = await res.text();
+      let json: any = {};
+      try { json = text ? JSON.parse(text) : {}; } catch {}
+      console.log('[DELETE_TOR] response', { status: res.status, ok: res.ok, body: json || text });
+      if (!res.ok) throw new Error((json && json.message) || `Failed to delete transcript (${res.status})`);
       // Always re-fetch to confirm state; backend returns 500 if not cleared
       await fetchProfile(user.email);
+      console.log('[DELETE_TOR] refetched profile');
     } catch (e: any) {
       alert(e.message || 'Failed to delete transcript');
       // Roll back UI
@@ -249,8 +324,13 @@ const AnalysisPage = () => {
     }
   };
 
+
+
   const handleAddCertificates = async (files: FileList | null) => {
     if (!user.email || !files || files.length === 0) return;
+    
+    console.log('[CERT_UPLOAD] starting', { fileCount: files.length, files: Array.from(files).map(f => ({ name: f.name, type: f.type, size: f.size })) });
+    
     try {
                             const stored = localStorage.getItem('user');
       const parsed = stored ? (() => { try { return JSON.parse(stored); } catch { return null; } })() : null;
@@ -270,34 +350,53 @@ const AnalysisPage = () => {
       setExistingCertificates(prev => [...temps, ...prev]);
 
       for (const file of Array.from(files)) {
-      const form = new FormData();
+        console.log('[CERT_UPLOAD] uploading file', { name: file.name, type: file.type, size: file.size });
+        
+        const form = new FormData();
         form.append('email', user.email);
         if (userId !== undefined) form.append('user_id', String(userId));
-      form.append('kind', 'certificate');
-      form.append('file', file, file.name);
+        form.append('kind', 'certificate');
+        form.append('file', file, file.name);
+        
         const up = await fetch(getApiUrl('UPLOAD_TOR'), { method: 'POST', body: form });
-        const j = await up.json().catch(() => ({}));
-        if (!up.ok) throw new Error(j.message || 'Certificate upload failed');
+        const text = await up.text();
+        let j: any = {};
+        try { j = text ? JSON.parse(text) : {}; } catch {}
+        
+        console.log('[CERT_UPLOAD] response', { status: up.status, ok: up.ok, body: j || text });
+        
+        if (!up.ok) throw new Error((j && j.message) || `Certificate upload failed (${up.status})`);
       }
 
+      console.log('[CERT_UPLOAD] all files uploaded, refreshing profile');
       await fetchProfile(user.email);
     } catch (e: any) {
+      console.error('[CERT_UPLOAD] error', e);
       alert(e.message || 'Failed to upload certificates');
       setExistingCertificates(prev => prev.filter(c => !c._temp));
     }
   };
 
-  const handleDeleteCertificate = async (path: string) => {
+  const handleDeleteCertificate = async (pathOrUrl: string) => {
     if (!user.email) return;
+    console.log('[CERT_DELETE] starting', { email: user.email, target: pathOrUrl });
     try {
+      const body: any = { email: user.email };
+      // Heuristic: if looks like a URL, send as certificate_url; else as path
+      if (/^https?:\/\//i.test(pathOrUrl)) body.certificate_url = pathOrUrl; else body.certificate_path = pathOrUrl;
+
       const res = await fetch(getApiUrl('UPLOAD_TOR'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, certificate_path: path })
+        body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error('Failed to delete certificate');
+      const text = await res.text();
+      let j: any = {}; try { j = text ? JSON.parse(text) : {}; } catch {}
+      console.log('[CERT_DELETE] response', { status: res.status, ok: res.ok, body: j || text });
+      if (!res.ok) throw new Error((j && j.message) || `Failed to delete certificate (${res.status})`);
       await fetchProfile(user.email);
     } catch (e: any) {
+      console.error('[CERT_DELETE] error', e);
       alert(e.message || 'Failed to delete certificate');
     }
   };
@@ -364,8 +463,8 @@ const AnalysisPage = () => {
          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="flex justify-between items-center h-16">
              <div className="flex items-center"><Link to="/dashboard" className="text-xl font-bold">Gradalyze</Link></div>
-           </div>
-         </div>
+            </div>
+          </div>
        </nav>
 
        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -375,34 +474,34 @@ const AnalysisPage = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             Back to Dashboard
           </Link>
-        </div>
+          </div>
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
           {/* Header styled like screenshot */}
           <div className="flex items-center gap-2 mb-6">
             <div className="w-4 h-4 bg-blue-500 rounded-sm"></div>
             <h2 className="text-2xl font-bold">Academic Analysis</h2>
-          </div>
+              </div>
 
           {isLoading ? (
             <div className="text-center py-12 text-gray-400">Loading…</div>
           ) : (
             <div className="space-y-8">
               {/* Transcript (Required) */}
-          <div>
+                    <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-4 h-4 bg-gray-300 rounded-sm" />
                   <h3 className="text-lg font-semibold">Transcript of Records (Required)</h3>
                   <span className="ml-2 text-[11px] px-2 py-0.5 rounded bg-red-600 text-white">Required</span>
-                </div>
+          </div>
 
-                <div className={`rounded-lg border ${existingTranscript?.hasFile ? 'border-green-700 bg-green-900/10' : 'border-gray-700 bg-gray-800'} p-4`}> 
+                <div className={`rounded-lg border border-gray-700 bg-gray-800 p-4`}> 
                   {existingTranscript?.hasFile ? (
-                    <div className="flex items-center justify-between bg-green-900/20 border border-green-700 rounded px-4 py-3">
+                    <div className="flex items-center justify-between px-2">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-gray-200 rounded flex items-center justify-center">
                           <span className="text-gray-700 text-xs font-semibold">PDF</span>
                         </div>
-                        <div>
+          <div>
                           <div className="text-white text-sm font-medium">{existingTranscript.fileName || 'transcript.pdf'}</div>
                           {tempTranscriptSizeKB && <div className="text-gray-300 text-xs">{tempTranscriptSizeKB} KB</div>}
                       </div>
@@ -457,11 +556,10 @@ const AnalysisPage = () => {
                 {/* Grades Table moved below toggle */}
                 {showGrades && (
                   <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-4">
-                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold text-white">Validated TOR Grades</h3>
-                      <div className="flex gap-2">
-                        <button onClick={addRow} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm">Add Row</button>
-                        <button onClick={validateAndProcess} disabled={isProcessing || grades.length === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-2 rounded-md text-sm">{isProcessing ? 'Processing…' : 'Validate & Process'}</button>
+                        <div className="flex gap-2">
+                          <button onClick={addRow} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm">Add Row</button>
       </div>
       </div>
                     {grades.length === 0 ? (
@@ -516,11 +614,11 @@ const AnalysisPage = () => {
                             ))}
                   </tbody>
                 </table>
-        </div>
-      )}
-        </div>
-      )}
               </div>
+      )}
+        </div>
+      )}
+    </div>
               
               {/* Certificates (Optional) */}
               <div>
@@ -528,9 +626,9 @@ const AnalysisPage = () => {
                   <span className="w-4 h-4 bg-yellow-500 rounded-sm" />
                   <h3 className="text-lg font-semibold">Certificates & Achievements (Optional)</h3>
                   <span className="ml-2 text-[11px] px-2 py-0.5 rounded bg-gray-600 text-white">Optional</span>
-            </div>
+      </div>
 
-                <div className={`rounded-lg border ${existingCertificates.length > 0 ? 'border-green-700 bg-green-900/10' : 'border-gray-700 bg-gray-800'} p-4`}>
+                <div className={`rounded-lg border border-gray-700 bg-gray-800 p-4`}>
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-gray-300">Add certificates, achievements, or other relevant documents</p>
                   <div>
@@ -541,25 +639,70 @@ const AnalysisPage = () => {
                   <p className="text-xs text-gray-500 mt-2">Supported: PDF, DOC, DOCX, JPG, PNG (max. 5MB each)</p>
 
                   {existingCertificates.length > 0 && (
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                       {existingCertificates.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between p-2 bg-gray-700 rounded-md">
-                          <span className="text-sm text-white font-medium truncate mr-2">{c.name}</span>
-                          <div className="flex items-center gap-2 ml-2">
-                            {!c._temp && (
-                              <button onClick={() => handleDeleteCertificate(c.path || c.url)} className="text-red-300 hover:text-red-200 text-xs">Delete</button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-                  )}
-      </div>
-            </div>
-
+                        <div key={c.id} className="bg-gray-900 border border-gray-700 rounded-md p-3 flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-7 h-7 bg-gray-200 rounded flex items-center justify-center shrink-0"><span className="text-gray-700 text-[10px] font-bold">{(c.name.split('.').pop() || 'FILE').toUpperCase()}</span></div>
+                            <span className="text-sm text-white font-medium truncate" title={c.name}>{c.name}</span>
+                          </div>
+                          {!c._temp && (
+                            <button onClick={() => handleDeleteCertificate(c.path || c.url)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs bg-red-700 hover:bg-red-600 text-white border border-red-600">Delete</button>
+                          )}
+                        </div>
+                ))}
             </div>
           )}
             </div>
+              </div>
+
+            </div>
+          )}
+          </div>
+          {existingTranscript?.hasFile && (
+                  <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">Analysis & Archetype Summary</h3>
+                      <button onClick={validateAndProcess} disabled={isProcessing || grades.length === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-2 rounded-md text-sm">{isProcessing ? 'Processing…' : 'Process & Analyze'}</button>
+                </div>
+                    {(primaryArchetype || Object.values(archetypePercents).some(v => typeof v === 'number')) ? (
+                      <>
+                        {primaryArchetype && (
+                          <p className="text-sm text-gray-300 mb-3">Primary Archetype: <span className="font-semibold text-white">{primaryArchetype}</span></p>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {Object.entries(archetypePercents).map(([k, v]) => {
+                            if (typeof v !== 'number') return null;
+                            const info = archetypeInfo[k as keyof typeof archetypeInfo];
+                            return (
+                              <div key={k} className="bg-gray-900 border border-gray-700 rounded p-4">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-sm text-gray-300 capitalize">{k}</div>
+                                    {info && <div className="text-white font-medium">{info.title}</div>}
+              </div>
+                                  <span className="text-sm text-white font-semibold">{v.toFixed(1)}%</span>
+                </div>
+                                <div className="w-full bg-gray-700 h-2 rounded mt-2">
+                                  <div className="bg-blue-600 h-2 rounded" style={{ width: `${Math.min(100, Math.max(0, v))}%` }} />
+              </div>
+                                {info && (
+                                  <div className="mt-3 text-xs text-gray-300">
+                                    <div className="mb-1"><span className="text-gray-400">Academic Indicators:</span> {info.indicators}</div>
+                                    <div><span className="text-gray-400">Possible Roles:</span> {info.roles}</div>
+        </div>
+      )}
+              </div>
+                            );
+                          })}
+              </div>
+                        {/* Percentage Details Table */}
+                </>
+              ) : (
+                      <p className="text-sm text-gray-400">No archetype data yet. Click "Process & Analyze" to compute your archetype from the validated grades.</p>
+                    )}
+          </div>
+                )}
       </main>
     </div>
   );
