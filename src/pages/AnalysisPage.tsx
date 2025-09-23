@@ -618,15 +618,15 @@ const AnalysisPage = () => {
       )}
         </div>
       )}
-    </div>
-              
+            </div>
+          
               {/* Certificates (Optional) */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-4 h-4 bg-yellow-500 rounded-sm" />
                   <h3 className="text-lg font-semibold">Certificates & Achievements (Optional)</h3>
                   <span className="ml-2 text-[11px] px-2 py-0.5 rounded bg-gray-600 text-white">Optional</span>
-      </div>
+                  </div>
 
                 <div className={`rounded-lg border border-gray-700 bg-gray-800 p-4`}>
                   <div className="flex items-center justify-between">
@@ -634,8 +634,8 @@ const AnalysisPage = () => {
                   <div>
                       <label htmlFor="upload-certs" className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md text-sm cursor-pointer">Add Certificates</label>
                       <input id="upload-certs" type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" className="hidden" onChange={(e) => handleAddCertificates(e.target.files)} />
-                  </div>
-                </div>
+              </div>
+              </div>
                   <p className="text-xs text-gray-500 mt-2">Supported: PDF, DOC, DOCX, JPG, PNG (max. 5MB each)</p>
 
                   {existingCertificates.length > 0 && (
@@ -645,26 +645,26 @@ const AnalysisPage = () => {
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-7 h-7 bg-gray-200 rounded flex items-center justify-center shrink-0"><span className="text-gray-700 text-[10px] font-bold">{(c.name.split('.').pop() || 'FILE').toUpperCase()}</span></div>
                             <span className="text-sm text-white font-medium truncate" title={c.name}>{c.name}</span>
-                          </div>
+          </div>
                           {!c._temp && (
                             <button onClick={() => handleDeleteCertificate(c.path || c.url)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs bg-red-700 hover:bg-red-600 text-white border border-red-600">Delete</button>
-                          )}
-                        </div>
+      )}
+    </div>
                 ))}
-            </div>
-          )}
-            </div>
+        </div>
+      )}
+                </div>
               </div>
-
-            </div>
-          )}
-          </div>
+              
+              </div>
+                )}
+              </div>
           {existingTranscript?.hasFile && (
                   <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-6">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-semibold text-white">Analysis & Archetype Summary</h3>
                       <button onClick={validateAndProcess} disabled={isProcessing || grades.length === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-2 rounded-md text-sm">{isProcessing ? 'Processing…' : 'Process & Analyze'}</button>
-                </div>
+            </div>
                     {(primaryArchetype || Object.values(archetypePercents).some(v => typeof v === 'number')) ? (
                       <>
                         {primaryArchetype && (
@@ -674,25 +674,25 @@ const AnalysisPage = () => {
                           {Object.entries(archetypePercents).map(([k, v]) => {
                             if (typeof v !== 'number') return null;
                             const info = archetypeInfo[k as keyof typeof archetypeInfo];
-                            return (
+  return (
                               <div key={k} className="bg-gray-900 border border-gray-700 rounded p-4">
                                 <div className="flex items-center justify-between">
-                                  <div>
+          <div>
                                     <div className="text-sm text-gray-300 capitalize">{k}</div>
                                     {info && <div className="text-white font-medium">{info.title}</div>}
-              </div>
+          </div>
                                   <span className="text-sm text-white font-semibold">{v.toFixed(1)}%</span>
-                </div>
+            </div>
                                 <div className="w-full bg-gray-700 h-2 rounded mt-2">
                                   <div className="bg-blue-600 h-2 rounded" style={{ width: `${Math.min(100, Math.max(0, v))}%` }} />
-              </div>
+          </div>
                                 {info && (
                                   <div className="mt-3 text-xs text-gray-300">
                                     <div className="mb-1"><span className="text-gray-400">Academic Indicators:</span> {info.indicators}</div>
                                     <div><span className="text-gray-400">Possible Roles:</span> {info.roles}</div>
-        </div>
-      )}
-              </div>
+            </div>
+          )}
+            </div>
                             );
                           })}
               </div>
@@ -701,8 +701,8 @@ const AnalysisPage = () => {
               ) : (
                       <p className="text-sm text-gray-400">No archetype data yet. Click "Process & Analyze" to compute your archetype from the validated grades.</p>
                     )}
-          </div>
-                )}
+            </div>
+          )}
       </main>
     </div>
   );
