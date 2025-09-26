@@ -7,6 +7,7 @@ type ExistingTranscript = {
   fileName?: string;
   url?: string;
   _temp?: boolean;
+  storagePath?: string;
 };
 
 type ExistingCertificate = {
@@ -42,11 +43,210 @@ const AnalysisPage = () => {
   const [blobUrls, setBlobUrls] = useState<string[]>([]);
   const [tempTranscriptSizeKB, setTempTranscriptSizeKB] = useState<number | null>(null);
 
+  // --- Curriculum (program-specific) helpers ---
+  const isCS = (user.course || '').toLowerCase().includes('computer science');
+  const isIT = (user.course || '').toLowerCase().includes('information technology');
+  const philippineGradeScale = [
+    '1.00','1.25','1.50','1.75','2.00','2.25','2.50','2.75','3.00','4.00','5.00'
+  ];
+
+  const normalize = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const findGradeForTitle = (title: string) => {
+    const nt = normalize(title);
+    // try best-match by substring overlap
+    let best: {score: number; grade: number | null} = {score: 0, grade: null};
+    for (const g of grades) {
+      const ns = normalize(g.subject);
+      if (!ns) continue;
+      const overlap = nt.split(' ').filter(w => w.length > 2 && ns.includes(w)).length;
+      if (overlap > best.score) {
+        best = {score: overlap, grade: typeof g.grade === 'number' ? g.grade : Number(g.grade)};
+      }
+    }
+    return best.grade ?? null;
+  };
+
+  const upsertGradeForTitle = (title: string, section: string, gradeValue: number) => {
+    const nt = normalize(title);
+    let bestIndex = -1; let bestScore = 0;
+    grades.forEach((g, idx) => {
+      const ns = normalize(g.subject);
+      const overlap = nt.split(' ').filter(w => w.length > 2 && ns.includes(w)).length;
+      if (overlap > bestScore) { bestScore = overlap; bestIndex = idx; }
+    });
+    if (bestIndex >= 0 && bestScore > 0) {
+      // Update existing grade row
+      setGrades(prev => prev.map((r, i) => i === bestIndex ? { ...r, grade: gradeValue } : r));
+    } else {
+      // Insert new grade row with sensible defaults
+      setGrades(prev => [
+        ...prev,
+        {
+          id: `${Date.now()}_${Math.random()}`,
+          subject: title,
+          units: 3,
+          grade: gradeValue,
+          semester: section,
+        }
+      ]);
+    }
+  };
+
+  // Curriculum map for BS Computer Science: section -> course titles (only title shown)
+  const csCurriculum: Record<string, string[]> = {
+    'First Year – First Semester': [
+      'Introduction to Computing',
+      'Fundamentals of Programming',
+      'Discrete Structures 1',
+      'Science, Technology and Society',
+      'Mathematics in the Modern World',
+      'Purposive Communication',
+      'Interdisiplinaryong Pagbasa at Pagsulat Tungo sa Mabisang Pagpapahayag',
+      'Foundation of Physical Activities',
+      'National Service Training Program 1',
+    ],
+    'First Year – Second Semester': [
+      'Intermediate Programming',
+      'Data Structures and Algorithms',
+      'Discrete Structures 2',
+      'Human Computer Interaction',
+      'The Contemporary World',
+      'Readings in Philippine History',
+      'Life and Works of Rizal',
+      'Group Exercise',
+      'National Service Training Program 2',
+    ],
+    'Second Year – First Semester': [
+      'Object Oriented Programming',
+      'Logic Design and Digital Computer Circuits',
+      'Operation Research',
+      'Information Management',
+      'Living in the IT Era',
+      'Ethics',
+      'Understanding the Self',
+      'PE Elective',
+    ],
+    'Second Year – Second Semester': [
+      'Algorithm and Complexity',
+      'Architecture and Organization',
+      'Applications Development and Emerging Technologies',
+      'Information Assurance Security',
+      'The Entrepreneurial Mind',
+      'Environmental Science',
+      'Art Appreciation',
+      'PE Elective',
+    ],
+    'Third Year – First Semester': [
+      'Automata Theory and Formal Languages',
+      'Programming Languages',
+      'Software Engineering',
+      'Operating System',
+      'Intelligent System',
+    ],
+    'Third Year – Second Semester': [
+      'Software Engineering 2',
+      'Compiler Design',
+      'Computational Science',
+      'CS Elective 1',
+      'Research Writing',
+    ],
+    'Third Year – Summer': [
+      'Practicum',
+    ],
+    'Fourth Year – First Semester': [
+      'CS Thesis Writing 1',
+      'Networks and Communication',
+      'CS Elective 2',
+      'CS Elective 3',
+    ],
+    'Fourth Year – Second Semester': [
+      'CS Thesis Writing 2',
+      'Parallel and Distributing Computing',
+      'Social Issues and Professional Practice',
+      'Graphics and Visual Computing',
+    ],
+  };
+
+  // Curriculum map for BS Information Technology
+  const itCurriculum: Record<string, string[]> = {
+    'First Year – First Semester': [
+      'Science, Technology and Society',
+      'Art Appreciation',
+      'Purposive Communication',
+      'Mathematics in the Modern World',
+      'Interdisiplinaryong Pagbasa at Pagsulat Tungo sa Mabisang Pagpapahayag',
+      'Introduction to Computing',
+      'Fundamentals of Programming',
+      'Foundation of Physical Activities',
+      'National Service Training Program 1',
+    ],
+    'First Year – Second Semester': [
+      'Calculus 1',
+      'General Chemistry',
+      'Introduction to Computer Human Interaction',
+      'Discrete Mathematics',
+      'Web Systems Technology',
+      'Intermediate Programming',
+      'Great Books',
+      'PE Elective',
+      'National Service Training Program 2',
+    ],
+    'Second Year – First Semester': [
+      'Calculus 2',
+      'Physics for IT',
+      'The Contemporary World',
+      'Data Structures and Algorithms',
+      'Object Oriented Programming',
+      'Philippine Popular Culture',
+      'Professional Elective 1',
+      'Soccer',
+    ],
+    'Second Year – Second Semester': [
+      'Understanding the Self',
+      'Readings in Philippine History',
+      'Platform Technology (Operating System)',
+      'Information Management',
+      'Quantitative Methods',
+      'Networking 1',
+      'Environmental Science',
+      'Professional Elective 2',
+      'PE Elective',
+    ],
+    'Third Year – First Semester': [
+      'Application and Emerging Technologies',
+      'Advanced Database Systems',
+      'Professional Elective 3',
+      'Networking 2',
+      'Life and Works of Rizal',
+    ],
+    'Third Year – Second Semester': [
+      'Information Assurance and Security 1',
+      'System Integration and Architecture 1',
+      'Integrative Programming and Technologies',
+      'Ethics',
+    ],
+    'Third Year – Summer': [
+      'System Integration and Architecture 2',
+      'Capstone Project 1',
+    ],
+    'Fourth Year – First Semester': [
+      'Professional Elective 4',
+      'Professional Elective 5',
+      'Professional Elective 6',
+      'Capstone Project',
+    ],
+    'Fourth Year – Second Semester': [
+      'Practicum (Lecture)',
+      'Practicum (Immersion)',
+    ],
+  };
+
   // Archetype summary state
   const [primaryArchetype, setPrimaryArchetype] = useState<string>('');
   const [archetypePercents, setArchetypePercents] = useState<{
     realistic?: number; investigative?: number; artistic?: number; social?: number; enterprising?: number; conventional?: number;
   }>({});
+  const [careerForecast, setCareerForecast] = useState<Record<string, number>>({});
 
   // Static descriptions for each RIASEC type (tailored for IT/CS)
   const archetypeInfo: Record<string, { title: string; indicators: string; roles: string } > = {
@@ -90,7 +290,7 @@ const AnalysisPage = () => {
         setUser(parsed);
         if (parsed?.email) fetchProfile(parsed.email);
       } catch {}
-    } else {
+        } else {
       setIsLoading(false);
     }
     return () => {
@@ -125,10 +325,11 @@ const AnalysisPage = () => {
       
       if (hasTor) {
         const url: string = data.tor_url.trim();
-          setExistingTranscript({
+        setExistingTranscript({
           hasFile: true,
           fileName: data.tor_storage_path.split('/').pop() || 'transcript.pdf',
           url,
+          storagePath: data.tor_storage_path,
         });
       } else {
         setExistingTranscript({ hasFile: false });
@@ -139,6 +340,8 @@ const AnalysisPage = () => {
         try {
           const parsed = JSON.parse(data.tor_notes);
           if (Array.isArray(parsed?.grades)) setGrades(normalizeToRows(parsed.grades));
+          const cf = parsed?.analysis_results?.career_forecast;
+          if (cf && typeof cf === 'object') setCareerForecast(cf);
         } catch {}
       }
 
@@ -263,7 +466,7 @@ const AnalysisPage = () => {
     setTempTranscriptSizeKB(Math.max(1, Math.round(file.size / 1024)));
     
     try {
-      const stored = localStorage.getItem('user');
+                            const stored = localStorage.getItem('user');
       const parsed = stored ? (() => { try { return JSON.parse(stored); } catch { return null; } })() : null;
       const userId = typeof parsed?.id === 'number' ? parsed.id : undefined;
 
@@ -280,10 +483,10 @@ const AnalysisPage = () => {
       console.log('[TOR_UPLOAD] response', { status: up.status, ok: up.ok, body: j || torText });
       if (!up.ok) throw new Error((j && j.message) || `Upload failed with status ${up.status}`);
 
-      // Trigger OCR and capture any returned grades
-      if (j.storage_path) {
+      // Run OCR after upload to populate grades, but DO NOT run full analysis here
+      if (j.storage_path && user.email) {
         const ocr = await fetch(getApiUrl('EXTRACT_GRADES'), {
-        method: 'POST',
+                              method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: user.email, storage_path: j.storage_path })
         });
@@ -352,11 +555,11 @@ const AnalysisPage = () => {
       for (const file of Array.from(files)) {
         console.log('[CERT_UPLOAD] uploading file', { name: file.name, type: file.type, size: file.size });
         
-        const form = new FormData();
+      const form = new FormData();
         form.append('email', user.email);
         if (userId !== undefined) form.append('user_id', String(userId));
-        form.append('kind', 'certificate');
-        form.append('file', file, file.name);
+      form.append('kind', 'certificate');
+      form.append('file', file, file.name);
         
         const up = await fetch(getApiUrl('UPLOAD_TOR'), { method: 'POST', body: form });
         const text = await up.text();
@@ -439,17 +642,31 @@ const AnalysisPage = () => {
   const validateAndProcess = async () => {
     try {
       setIsProcessing(true);
-      await fetch(`${API_CONFIG.BASE_URL}/api/analysis/validate-grades`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grades })
-      });
-      const resp = await fetch(getApiUrl('DEV_COMPUTE_ARCHETYPE'), {
+      // If a TOR exists and no grades are present, run OCR first
+      if ((existingTranscript?.storagePath || existingTranscript?.url) && grades.length === 0) {
+        const sp = existingTranscript?.storagePath;
+        if (sp && user.email) {
+          const ocr = await fetch(getApiUrl('EXTRACT_GRADES'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: user.email, storage_path: sp })
+          });
+          const ocrJson = await ocr.json().catch(() => ({}));
+          if (Array.isArray(ocrJson?.grades)) setGrades(normalizeToRows(ocrJson.grades));
+        }
+      }
+
+      // Send grades to backend to compute Obj1 & Obj2 and persist
+      const resp = await fetch(`${API_CONFIG.BASE_URL}/api/analysis/process`, {
       method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email })
+        body: JSON.stringify({ email: user.email, grades })
       });
-      if (!resp.ok) throw new Error('Failed to process analysis');
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({}));
+        throw new Error(e.message || 'Failed to process analysis');
+      }
+      await fetchProfile(user.email);
     } catch (e: any) {
       alert(e.message || 'Failed to process analysis');
     } finally {
@@ -476,11 +693,21 @@ const AnalysisPage = () => {
           </Link>
           </div>
         <div className="bg-gray-900 rounded-lg border border-gray-800 p-8">
-          {/* Header styled like screenshot */}
-          <div className="flex items-center gap-2 mb-6">
-            <div className="w-4 h-4 bg-blue-500 rounded-sm"></div>
-            <h2 className="text-2xl font-bold">Academic Analysis</h2>
-              </div>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-blue-500 rounded-sm"></div>
+              <h2 className="text-2xl font-bold">Academic Analysis</h2>
+                      </div>
+                      <button
+              onClick={validateAndProcess}
+              disabled={isProcessing || !(existingTranscript?.hasFile || existingCertificates.length > 0) || grades.length === 0}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-2 rounded-md text-sm"
+              title={!(existingTranscript?.hasFile || existingCertificates.length > 0) ? 'Upload TOR or certificates first' : (grades.length === 0 ? 'No grades to process' : '')}
+            >
+              {isProcessing ? 'Processing…' : 'Process & Analyze'}
+                      </button>
+                    </div>
 
           {isLoading ? (
             <div className="text-center py-12 text-gray-400">Loading…</div>
@@ -537,85 +764,99 @@ const AnalysisPage = () => {
                 )}
               </div>
 
-                {/* Toggle to show/hide grades table when available */}
-                {existingTranscript?.hasFile && (
-                  <div className="mt-4">
+          {/* Toggle to show/hide grades table when available */}
+                <div className="mt-4">
               <button 
-                      onClick={() => setShowGrades(!showGrades)}
-                      disabled={isProcessing}
-                      className={`px-3 py-2 rounded-md text-sm ${isProcessing ? 'bg-gray-600 text-gray-300' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
-                    >
-                      {showGrades ? 'Hide Grades Table' : 'Show Grades Table'}
+                    onClick={() => setShowGrades(!showGrades)}
+                    disabled={isProcessing}
+                    className={`px-3 py-2 rounded-md text-sm ${isProcessing ? 'bg-gray-600 text-gray-300' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
+                  >
+                    {showGrades ? 'Hide Program Table' : 'Show Program Table'}
               </button>
-                    {grades.length === 0 && (
-                      <p className="text-xs text-gray-400 mt-2">No grades extracted yet. Upload a transcript to populate this table, or add rows manually.</p>
-      )}
-    </div>
-                )}
+                  {/* Info text removed as requested */}
+            </div>
+
+
+   
 
                 {/* Grades Table moved below toggle */}
                 {showGrades && (
                   <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-4">
-                      <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-white">Validated TOR Grades</h3>
-                        <div className="flex gap-2">
-                          <button onClick={addRow} className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm">Add Row</button>
-      </div>
-      </div>
-                    {grades.length === 0 ? (
-                      <p className="text-gray-300 text-sm">No grades extracted yet. Upload a transcript to populate this table, or add rows manually.</p>
-                    ) : (
-              <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm text-left border border-gray-700 rounded-md">
-                          <thead className="bg-gray-900 text-gray-300">
-                            <tr>
-                              <th className="px-3 py-2 border-b border-gray-700">Subject</th>
-                              <th className="px-3 py-2 border-b border-gray-700 text-right">Units</th>
-                              <th className="px-3 py-2 border-b border-gray-700 text-right">Grade</th>
-                              <th className="px-3 py-2 border-b border-gray-700">Semester</th>
-                              <th className="px-3 py-2 border-b border-gray-700 text-right">Actions</th>
+                      <h3 className="text-lg font-semibold text-white mb-4">Validated TOR Grades</h3>
+                      {!isCS && !isIT && (
+                        <p className="text-gray-300 text-sm">Upload a transcript to populate this table. For non-CS/IT programs, mapping will use generic OCR subjects.</p>
+                      )}
+
+                      {/* Program-structured tables (CS / IT) */}
+                      {isCS || isIT ? (
+    <div className="space-y-6">
+                          {Object.entries(isCS ? csCurriculum : itCurriculum).map(([section, subjects]) => (
+                            <div key={section}>
+                              <h4 className="text-white font-semibold mb-2">{section}</h4>
+                              <div className="overflow-x-auto pb-24">
+                                <table className="min-w-full text-sm text-left border border-gray-700 rounded-md">
+                                  <thead className="bg-gray-900 text-gray-300">
+                                    <tr>
+                                      <th className="px-3 py-2 border-b border-gray-700">Course Title</th>
+                                      <th className="px-3 py-2 border-b border-gray-700 text-right">Grade</th>
                     </tr>
                   </thead>
-                          <tbody>
-                            {grades.map((row) => (
-                              <tr key={row.id} className="odd:bg-gray-900 even:bg-gray-800">
-                                <td className="px-3 py-2 border-b border-gray-700">
-                                  {editing?.id === row.id && editing.field === 'subject' ? (
-                                    <input value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }} className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded" autoFocus />
-                                  ) : (
-                                    <div onClick={() => startEdit(row.id, 'subject', row.subject)} className="cursor-text">{row.subject}</div>
-                             )}
+                                  <tbody>
+                                    {subjects.map((t, idx) => {
+                                      const g = findGradeForTitle(t);
+                       return (
+                                        <tr key={idx} className="odd:bg-gray-900 even:bg-gray-800">
+                                          <td className="px-3 py-2 border-b border-gray-700">{t}</td>
+                                          <td className="px-3 py-2 border-b border-gray-700 text-right">
+                                            <select
+                                              value={g != null ? g.toFixed(2) : ''}
+                                              onChange={(e) => upsertGradeForTitle(t, section, Number(e.target.value))}
+                                              className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            >
+                                              <option value="">--</option>
+                                              {philippineGradeScale.map((v) => (
+                                                <option key={v} value={v}>{v}</option>
+                                              ))}
+                                            </select>
                            </td>
-                                <td className="px-3 py-2 border-b border-gray-700 text-right">
-                                  {editing?.id === row.id && editing.field === 'units' ? (
-                                    <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }} className="w-24 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-right" autoFocus />
-                                  ) : (
-                                    <div onClick={() => startEdit(row.id, 'units', row.units)} className="cursor-text">{row.units}</div>
-                             )}
-                           </td>
-                                <td className="px-3 py-2 border-b border-gray-700 text-right">
-                                  {editing?.id === row.id && editing.field === 'grade' ? (
-                                    <input type="number" step="0.01" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }} className="w-24 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-right" autoFocus />
-                                  ) : (
-                                    <div onClick={() => startEdit(row.id, 'grade', row.grade)} className="cursor-text">{row.grade.toFixed(2)}</div>
-                             )}
-                           </td>
-                                <td className="px-3 py-2 border-b border-gray-700">
-                                  {editing?.id === row.id && editing.field === 'semester' ? (
-                                    <input value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={saveEdit} onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') cancelEdit(); }} className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded" autoFocus />
-                                  ) : (
-                                    <div onClick={() => startEdit(row.id, 'semester', row.semester)} className="cursor-text">{row.semester}</div>
-                             )}
-                           </td>
-                                <td className="px-3 py-2 border-b border-gray-700 text-right">
-                                  <button onClick={() => deleteRow(row.id)} className="text-red-300 hover:text-red-200 text-xs">Delete</button>
-                      </td>
-                    </tr>
-                            ))}
+                         </tr>
+                       );
+                     })}
                   </tbody>
                 </table>
               </div>
-      )}
+            </div>
+          ))}
+        </div>
+      ) : (
+                        // Fallback: generic editable table (previous UI)
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm text-left border border-gray-700 rounded-md">
+                            <thead className="bg-gray-900 text-gray-300">
+                              <tr>
+                                <th className="px-3 py-2 border-b border-gray-700">Subject</th>
+                                <th className="px-3 py-2 border-b border-gray-700 text-right">Units</th>
+                                <th className="px-3 py-2 border-b border-gray-700 text-right">Grade</th>
+                                <th className="px-3 py-2 border-b border-gray-700">Semester</th>
+                                <th className="px-3 py-2 border-b border-gray-700 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {grades.map((row) => (
+                                <tr key={row.id} className="odd:bg-gray-900 even:bg-gray-800">
+                                  <td className="px-3 py-2 border-b border-gray-700">{row.subject}</td>
+                                  <td className="px-3 py-2 border-b border-gray-700 text-right">{row.units}</td>
+                                  <td className="px-3 py-2 border-b border-gray-700 text-right">{Number(row.grade).toFixed(2)}</td>
+                                  <td className="px-3 py-2 border-b border-gray-700">{row.semester}</td>
+                                  <td className="px-3 py-2 border-b border-gray-700 text-right">
+                                    <button onClick={() => deleteRow(row.id)} className="text-red-300 hover:text-red-200 text-xs">Delete</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+          </div>
+                      )}
         </div>
       )}
             </div>
@@ -649,21 +890,53 @@ const AnalysisPage = () => {
                           {!c._temp && (
                             <button onClick={() => handleDeleteCertificate(c.path || c.url)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs bg-red-700 hover:bg-red-600 text-white border border-red-600">Delete</button>
       )}
-    </div>
+          </div>
                 ))}
         </div>
       )}
+    </div>
+      </div>
+
+        </div>
+      )}
+                  </div>
+              <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">Career Forecast</h3>
+                  </div>
+            {Object.keys(careerForecast || {}).length === 0 ? (
+              <p className="text-sm text-gray-400">No forecast yet. Click "Process & Analyze" after providing grades to compute your career success scores.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  'data_science',
+                  'systems_engineering',
+                  'software_engineering',
+                  'ui_ux',
+                  'product_management',
+                ].map((k) => {
+                  const v = (careerForecast as any)[k] ?? 0;
+                  const pct = Math.round((Number(v) || 0) * 100);
+                  const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                  return (
+                    <div key={k} className="bg-gray-900 border border-gray-700 rounded p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm text-gray-300">{label}</span>
+                        <span className="text-sm text-white font-semibold">{pct}%</span>
+                </div>
+                      <div className="w-full bg-gray-700 h-2 rounded">
+                        <div className="bg-blue-600 h-2 rounded" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
                 </div>
               </div>
-              
+                  );
+                })}
               </div>
                 )}
               </div>
           {existingTranscript?.hasFile && (
                   <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-white">Analysis & Archetype Summary</h3>
-                      <button onClick={validateAndProcess} disabled={isProcessing || grades.length === 0} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-2 rounded-md text-sm">{isProcessing ? 'Processing…' : 'Process & Analyze'}</button>
+                      <h3 className="text-lg font-semibold text-white">Archetype Summary</h3>
             </div>
                     {(primaryArchetype || Object.values(archetypePercents).some(v => typeof v === 'number')) ? (
                       <>

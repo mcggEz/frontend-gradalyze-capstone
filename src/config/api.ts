@@ -22,7 +22,6 @@ export const API_CONFIG = {
     // Analysis endpoints
     RECOMMENDED_SKILLS: '/api/analysis/recommended-skills',
     COMPANIES_FOR_USER: '/api/analysis/companies-for-user',
-    DEV_COMPUTE_ARCHETYPE: '/api/analysis/dev-compute-archetype',
   }
 };
 

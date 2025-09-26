@@ -1,13 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getApiUrl } from '../config/api';
 
 const DossierPage = () => {
-  const [user] = useState({
-    name: 'John Doe',
-    email: 'john.doe@plm.edu.ph',
-    course: 'Computer Science',
-    year: '4th Year'
+  const [user, setUser] = useState({
+    name: '',
+    email: '',
+    course: '',
+    year: ''
   });
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const stored = localStorage.getItem('user');
+        const u = stored ? JSON.parse(stored) : {};
+        const email = (u?.email || '').trim();
+        if (!email) return;
+        const res = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
+        if (!res.ok) return;
+        const p = await res.json();
+        setUser({
+          name: p?.name || `${p?.first_name || ''} ${p?.last_name || ''}`.trim() || email,
+          email: p?.email || email,
+          course: p?.course || (u?.course || ''),
+          year: (u?.year || '').toString(),
+        });
+      } catch {}
+    };
+    load();
+  }, []);
 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   

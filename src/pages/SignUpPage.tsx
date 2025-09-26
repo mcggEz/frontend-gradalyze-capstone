@@ -95,7 +95,6 @@ const SignUpPage = () => {
   const courses = [
     'BS Information Technology',
     'BS Computer Science',
-    'BS Computer Engineering',
   ];
 
   return (
