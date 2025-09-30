@@ -36,7 +36,7 @@ const LandingPage = () => {
             </h1>
             <p className="text-base sm:text-lg lg:text-xl text-gray-400 mb-8 leading-relaxed px-4 sm:px-0">
               Upload your transcript, discover your learning archetype, and get personalized 
-              career recommendations with real-time job opportunities from top companies.
+              career recommendations and academic insights.
             </p>
             <div className="flex justify-center px-4 sm:px-0">
               <Link 
@@ -136,7 +136,7 @@ const LandingPage = () => {
                       <span className="text-white font-bold text-sm">3</span>
                     </div>
                     <p className="text-gray-300 leading-relaxed">
-                      How can the system recommend <strong className="text-green-300">job-fit companies</strong> to students by analyzing the alignment between their predicted job fit scores and the competency requirements of various company roles using artificial intelligence?
+                      How can the system provide <strong className="text-green-300">personalized career guidance</strong> to students by analyzing their academic performance and learning patterns using artificial intelligence?
                     </p>
                   </div>
                 </div>
@@ -208,7 +208,7 @@ const LandingPage = () => {
                         </svg>
                       </div>
                       <p className="text-gray-300 leading-relaxed">
-                        To implement an <strong className="text-green-300">AI-powered recommendation algorithm</strong> that analyzes the compatibility between a student's job fit score vector and the competency profiles of different company roles in order to suggest suitable job-fit companies.
+                        To implement an <strong className="text-green-300">AI-powered recommendation algorithm</strong> that analyzes student academic patterns and learning archetypes to provide personalized career guidance and academic insights.
                       </p>
                     </div>
                   </div>

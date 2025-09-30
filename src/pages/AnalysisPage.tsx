@@ -914,6 +914,11 @@ const AnalysisPage = () => {
                   'software_engineering',
                   'ui_ux',
                   'product_management',
+                  'cybersecurity',
+                  'cloud_engineering',
+                  'devops',
+                  'business_analyst',
+                  'project_manager',
                 ].map((k) => {
                   const v = (careerForecast as any)[k] ?? 0;
                   const pct = Math.round((Number(v) || 0) * 100);
@@ -976,6 +981,7 @@ const AnalysisPage = () => {
                     )}
             </div>
           )}
+
       </main>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../config/api';
+import RecommendationsSection from '../components/RecommendationsSection';
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -126,30 +127,6 @@ const DashboardPage = () => {
     }
   };
 
-  // Jobs feed (infinite scroll)
-  type Job = {
-    id: number;
-    title: string;
-    company?: string;
-    location?: string;
-    employment_type?: string;
-    remote?: boolean;
-    salary_min?: number;
-    salary_max?: number;
-    currency?: string;
-    url: string;
-    source?: string;
-    posted_at?: string;
-    tags?: string[];
-    description?: string;
-  };
-
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [jobsOffset, setJobsOffset] = useState(0);
-  const [jobsHasMore, setJobsHasMore] = useState(true);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [scrapingJobs, setScrapingJobs] = useState(false);
-  const observerRef = useRef<HTMLDivElement | null>(null);
 
   // Dynamic data states
   const [hiringCompanies, setHiringCompanies] = useState<any[]>([]);
@@ -159,99 +136,6 @@ const DashboardPage = () => {
   const [userArchetype, setUserArchetype] = useState<any>(null);
   const [archetypeLoading, setArchetypeLoading] = useState(false);
 
-  const fetchJobs = useCallback(async () => {
-    if (jobsLoading || !jobsHasMore) return;
-    setJobsLoading(true);
-    try {
-      const res = await fetch(`${getApiUrl('JOBS')}?limit=10&offset=${jobsOffset}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to load jobs');
-      setJobs((prev) => [...prev, ...(data.jobs || [])]);
-      setJobsOffset((prev) => prev + (data.limit || 10));
-      setJobsHasMore(Boolean(data.has_more));
-    } catch (e) {
-      // ignore for now
-    } finally {
-      setJobsLoading(false);
-    }
-  }, [jobsLoading, jobsHasMore, jobsOffset]);
-
-  const scrapeJobs = async () => {
-    setScrapingJobs(true);
-    try {
-      // Only scrape if user has archetype data
-      if (!userArchetype || !userArchetype.hasAnalysis) {
-        alert('Please upload your transcript first to get personalized job recommendations.');
-        setScrapingJobs(false);
-        return;
-      }
-
-      const res = await fetch(getApiUrl('SCRAPE_JOBS'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_email: user.email,
-          location: 'Philippines',
-          sources: ['google', 'linkedin', 'indeed'],
-          jobs_per_query: 8,
-          archetype_based: true
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        // Refresh jobs list
-        setJobs([]);
-        setJobsOffset(0);
-        setJobsHasMore(true);
-        await fetchJobs();
-      } else {
-        console.error('Scraping failed:', data.message);
-      }
-    } catch (e) {
-      console.error('Failed to scrape jobs:', e);
-    } finally {
-      setScrapingJobs(false);
-    }
-  };
-
-  // Intersection observer for infinite scroll
-  useEffect(() => {
-    if (!observerRef.current) return;
-    const el = observerRef.current;
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) fetchJobs();
-      });
-    }, { rootMargin: '600px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [fetchJobs]);
-
-  const renderJobCard = (job: Job) => {
-    return (
-      <a key={job.id} href={job.url} target="_blank" rel="noreferrer"
-         className="block bg-gray-900 rounded-lg border border-gray-800 p-5 hover:border-gray-700 transition-colors">
-        <div className="flex items-start justify-between">
-          <div>
-            <h4 className="text-lg font-semibold mb-1">{job.title}</h4>
-            <p className="text-sm text-gray-300">{job.company || 'Company'} • {job.location || 'Location'}{job.remote ? ' • Remote' : ''}</p>
-          </div>
-          {job.source && (
-            <span className="text-xs text-gray-400">{job.source}</span>
-          )}
-        </div>
-        {job.description && (
-          <p className="text-sm text-gray-400 mt-3 line-clamp-3">{job.description}</p>
-        )}
-        <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
-          <span>{job.employment_type || '—'}</span>
-          <span>
-            {job.salary_min && job.salary_max ? `${job.currency || ''} ${job.salary_min}–${job.salary_max}` : '—'}
-          </span>
-        </div>
-      </a>
-    );
-  };
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -260,6 +144,7 @@ const DashboardPage = () => {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
+              
               <Link to="/dashboard" className="text-xl font-bold">Gradalyze</Link>
             </div>
             <div className="flex items-center space-x-4">
@@ -420,45 +305,11 @@ const DashboardPage = () => {
               )}
             </div>
 
-            {/* Jobs Feed - Only show if user has transcript */}
-            {userArchetype?.hasAnalysis && (
-              <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-                <div className="mb-4">
-                  <h3 className="text-lg font-bold">Recommended Jobs</h3>
-                </div>
-                <div className="space-y-3">
-                  {jobs.map(renderJobCard)}
-                  {jobsLoading && (
-                    <div className="text-sm text-gray-400">Loading more jobs…</div>
-                  )}
-                  {!jobsLoading && jobs.length === 0 && (
-                    <div className="text-center py-8">
-                      <div className="w-16 h-16 bg-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2V6" />
-                        </svg>
-                      </div>
-                      <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
-                      <p className="text-gray-400 mb-4">
-                        Click 'Get Jobs' to find personalized job recommendations based on your archetype.
-                      </p>
-                      <button
-                        onClick={scrapeJobs}
-                        disabled={scrapingJobs}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {scrapingJobs ? 'Finding Jobs...' : 'Find My Jobs'}
-                      </button>
-                    </div>
-                  )}
-                  {/* Observer target for infinite scroll */}
-                  <div ref={observerRef} />
-                  {!jobsHasMore && jobs.length > 0 && (
-                    <div className="text-xs text-gray-500 text-center">You've reached the end.</div>
-                  )}
-                </div>
-              </div>
+            {/* AI-Powered Recommendations Section */}
+            {user.email && (
+              <RecommendationsSection userEmail={user.email} />
             )}
+
           </div>
 
           {/* Right Sidebar */}

@@ -14,14 +14,19 @@ export const API_CONFIG = {
     UPLOAD_CERTIFICATES: '/api/users/upload-certificates',
     EXTRACT_GRADES: '/api/users/extract-grades',
     
-    // Jobs endpoints
-    JOBS: '/api/jobs',
-    SCRAPE_JOBS: '/api/jobs/scrape',
-    SCRAPE_JOBS_FOR_USER: '/api/jobs/scrape-for-user',
     
     // Analysis endpoints
     RECOMMENDED_SKILLS: '/api/analysis/recommended-skills',
     COMPANIES_FOR_USER: '/api/analysis/companies-for-user',
+    
+    // Recommendation endpoints
+    COMPANY_RECOMMENDATIONS: '/api/recommendations/companies',
+    JOB_OPENINGS: '/api/recommendations/jobs',
+    COMPLETE_RECOMMENDATIONS: '/api/recommendations/complete',
+    
+    // Dossier endpoints
+    DOSSIER_GENERATE: '/api/dossier/generate',
+    DOSSIER_PREVIEW: '/api/dossier/preview',
   }
 };
 
