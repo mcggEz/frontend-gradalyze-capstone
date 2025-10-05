@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect,  } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getApiUrl } from '../config/api';
-import RecommendationsSection from '../components/RecommendationsSection';
+import RecommendationsSection from '../analyiscomponents/RecommendationsSection.tsx';
+
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ const DashboardPage = () => {
   const fetchHiringCompanies = async (email: string) => {
     setCompaniesLoading(true);
     try {
-      const response = await fetch(`${getApiUrl('COMPANIES_FOR_USER')}?email=${encodeURIComponent(email)}`);
+      const response = await fetch(`${getApiUrl('COMPANY_RECOMMENDATIONS')}/${encodeURIComponent(email)}`);
       if (response.ok) {
         const data = await response.json();
         setHiringCompanies(data.companies || []);
@@ -94,7 +95,7 @@ const DashboardPage = () => {
           }
           // Convert to friendly label that matches the sidebar naming
           const friendlyPrimary = toFriendlyArchetype(primaryArchetype);
-
+          
           setUserArchetype({
             primary: friendlyPrimary,
             analyzedAt: data.archetype_analyzed_at,
@@ -129,8 +130,8 @@ const DashboardPage = () => {
 
 
   // Dynamic data states
-  const [hiringCompanies, setHiringCompanies] = useState<any[]>([]);
-  const [companiesLoading, setCompaniesLoading] = useState(false);
+  const [, setHiringCompanies] = useState<any[]>([]);
+  const [, setCompaniesLoading] = useState(false);
   
   // User archetype data
   const [userArchetype, setUserArchetype] = useState<any>(null);

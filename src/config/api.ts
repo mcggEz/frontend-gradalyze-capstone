@@ -14,10 +14,22 @@ export const API_CONFIG = {
     UPLOAD_CERTIFICATES: '/api/users/upload-certificates',
     EXTRACT_GRADES: '/api/users/extract-grades',
     
+    // Grades endpoints
+    GET_GRADES: '/api/grades/get',
+    UPDATE_GRADES: '/api/grades/update',
+    ADD_GRADE: '/api/grades/add',
+    DELETE_GRADE: '/api/grades/delete',
+    
+    // Certificate endpoints
+    EXTRACT_CERTIFICATE_TEXT: '/api/certificates/extract-text',
+    ANALYZE_CERTIFICATE: '/api/certificates/analyze',
+    ENHANCE_ANALYSIS: '/api/certificates/enhance-analysis',
+    
     
     // Analysis endpoints
     RECOMMENDED_SKILLS: '/api/analysis/recommended-skills',
     COMPANIES_FOR_USER: '/api/analysis/companies-for-user',
+    CLEAR_ANALYSIS_RESULTS: '/api/analysis/clear-results',
     
     // Recommendation endpoints
     COMPANY_RECOMMENDATIONS: '/api/recommendations/companies',
