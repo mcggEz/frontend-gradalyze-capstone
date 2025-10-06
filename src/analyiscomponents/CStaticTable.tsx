@@ -6,11 +6,12 @@ interface Props {
   onGradesChange: (grades: GradeRow[]) => void;
   isProcessing: boolean;
   prefillGrades?: number[];
+  onEmitOrder?: (ids: string[]) => void;
 }
 
 const SCALE = ['1.00','1.25','1.50','1.75','2.00','2.25','2.50','2.75','3.00'];
 
-const CStaticTable = ({ grades, onGradesChange, isProcessing, prefillGrades }: Props) => {
+const CStaticTable = ({ grades, onGradesChange, isProcessing, prefillGrades, onEmitOrder }: Props) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   // Per-row state (explicit ids; no arrays/maps)
   const [state, setState] = useState<Record<string,string>>({});
@@ -46,6 +47,16 @@ const CStaticTable = ({ grades, onGradesChange, isProcessing, prefillGrades }: P
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillGrades]);
+
+  // Emit the canonical order of select ids once on mount
+  useEffect(() => {
+    const container = rootRef.current;
+    if (!container || !onEmitOrder) return;
+    const selects = Array.from(container.querySelectorAll('select[id]')) as HTMLSelectElement[];
+    const ids = selects.map(s => s.id);
+    if (ids.length > 0) onEmitOrder(ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div ref={rootRef} className="space-y-6">

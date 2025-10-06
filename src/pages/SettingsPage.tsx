@@ -175,12 +175,8 @@ const SettingsPage = () => {
             <div>
               <h3 className="text-lg font-semibold mb-4">Account Actions</h3>
               <div className="space-y-3">
-                <button className="w-full text-left px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors">
-                  📥 Download My Data
-                </button>
-                <button className="w-full text-left px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors">
-                  Reset Recommendations
-                </button>
+                {/* Download My Data removed per request */}
+                {/* Reset Recommendations removed per request */}
                 <button className="w-full text-left px-4 py-3 bg-red-900 hover:bg-red-800 text-red-300 rounded-md transition-colors">
                   Delete Account
                 </button>

@@ -16,6 +16,7 @@ interface CertificatesUploadProps {
   user: { email: string };
   blobUrls: string[];
   onBlobUrlAdd: (url: string) => void;
+  onRefreshProfile?: () => void | Promise<void>;
 }
 
 const CertificatesUpload = ({
@@ -23,8 +24,9 @@ const CertificatesUpload = ({
   onCertificatesChange,
   onCertificateAnalysesChange,
   user,
-  blobUrls,
-  onBlobUrlAdd
+  blobUrls: _blobUrls,
+  onBlobUrlAdd,
+  onRefreshProfile
 }: CertificatesUploadProps) => {
   const [isProcessingCertificates, setIsProcessingCertificates] = useState(false);
 
@@ -34,10 +36,6 @@ const CertificatesUpload = ({
     console.log('[CERT_UPLOAD] starting', { fileCount: files.length, files: Array.from(files).map(f => ({ name: f.name, type: f.type, size: f.size })) });
     
     try {
-      const stored = localStorage.getItem('user');
-      const parsed = stored ? (() => { try { return JSON.parse(stored); } catch { return null; } })() : null;
-      const userId = typeof parsed?.id === 'number' ? parsed.id : undefined;
-
       const temps: ExistingCertificate[] = Array.from(files).map((file, idx) => {
         const tempUrl = URL.createObjectURL(file);
         onBlobUrlAdd(tempUrl);
@@ -51,27 +49,23 @@ const CertificatesUpload = ({
       });
       onCertificatesChange([...temps, ...existingCertificates]);
 
-      for (const file of Array.from(files)) {
-        console.log('[CERT_UPLOAD] uploading file', { name: file.name, type: file.type, size: file.size });
-        
-        const form = new FormData();
-        form.append('email', user.email);
-        if (userId !== undefined) form.append('user_id', String(userId));
-        form.append('kind', 'certificate');
-        form.append('file', file, file.name);
-        
-        const up = await fetch(getApiUrl('UPLOAD_TOR'), { method: 'POST', body: form });
-        const text = await up.text();
-        let j: any = {};
-        try { j = text ? JSON.parse(text) : {}; } catch {}
-        
-        console.log('[CERT_UPLOAD] response', { status: up.status, ok: up.ok, body: j || text });
-        
-        if (!up.ok) throw new Error((j && j.message) || `Certificate upload failed (${up.status})`);
-      }
+      // Build a single multipart request with multiple files (files[])
+      const form = new FormData();
+      form.append('email', user.email);
+      Array.from(files).forEach((file) => {
+        form.append('files', file, file.name);
+      });
+
+      console.log('[CERT_UPLOAD] posting batch', { count: files.length });
+      const up = await fetch(getApiUrl('UPLOAD_CERTIFICATES'), { method: 'POST', body: form });
+      const text = await up.text();
+      let j: any = {};
+      try { j = text ? JSON.parse(text) : {}; } catch {}
+      console.log('[CERT_UPLOAD] response', { status: up.status, ok: up.ok, body: j || text });
+      if (!up.ok) throw new Error((j && j.message) || `Certificate upload failed (${up.status})`);
 
       console.log('[CERT_UPLOAD] all files uploaded, refreshing profile');
-      // Note: Profile refresh should be handled by parent component
+      try { await onRefreshProfile?.(); } catch {}
     } catch (e: any) {
       console.error('[CERT_UPLOAD] error', e);
       alert(e.message || 'Failed to upload certificates');
@@ -86,7 +80,7 @@ const CertificatesUpload = ({
       const body: any = { email: user.email };
       if (/^https?:\/\//i.test(pathOrUrl)) body.certificate_url = pathOrUrl; else body.certificate_path = pathOrUrl;
 
-      const res = await fetch(getApiUrl('UPLOAD_TOR'), {
+      const res = await fetch(getApiUrl('DELETE_CERTIFICATE'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -95,7 +89,7 @@ const CertificatesUpload = ({
       let j: any = {}; try { j = text ? JSON.parse(text) : {}; } catch {}
       console.log('[CERT_DELETE] response', { status: res.status, ok: res.ok, body: j || text });
       if (!res.ok) throw new Error((j && j.message) || `Failed to delete certificate (${res.status})`);
-      // Note: Profile refresh should be handled by parent component
+      try { await onRefreshProfile?.(); } catch {}
     } catch (e: any) {
       console.error('[CERT_DELETE] error', e);
       alert(e.message || 'Failed to delete certificate');
@@ -210,7 +204,17 @@ const CertificatesUpload = ({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {existingCertificates.map((c) => (
-                <div key={c.id} className="bg-gray-900 border border-gray-700 rounded-md p-3 flex items-center justify-between">
+                <div key={c.id} className="relative bg-gray-900 border border-gray-700 rounded-md p-3 flex items-center justify-between">
+                  {!c._temp && (
+                    <button
+                      aria-label="Delete certificate"
+                      title="Delete"
+                      onClick={() => handleDeleteCertificate(c.path || c.url)}
+                      className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white text-xs shadow"
+                    >
+                      ×
+                    </button>
+                  )}
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-7 h-7 bg-gray-200 rounded flex items-center justify-center shrink-0">
                       <span className="text-gray-700 text-[10px] font-bold">
@@ -221,14 +225,6 @@ const CertificatesUpload = ({
                       {c.name}
                     </span>
                   </div>
-                  {!c._temp && (
-                    <button 
-                      onClick={() => handleDeleteCertificate(c.path || c.url)} 
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs bg-red-700 hover:bg-red-600 text-white border border-red-600"
-                    >
-                      Delete
-                    </button>
-                  )}
                 </div>
               ))}
             </div>

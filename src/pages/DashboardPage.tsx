@@ -34,10 +34,14 @@ const DashboardPage = () => {
   const fetchHiringCompanies = async (email: string) => {
     setCompaniesLoading(true);
     try {
-      const response = await fetch(`${getApiUrl('COMPANY_RECOMMENDATIONS')}/${encodeURIComponent(email)}`);
+      const response = await fetch(getApiUrl('COMPANY_RECOMMENDATIONS'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
       if (response.ok) {
         const data = await response.json();
-        setHiringCompanies(data.companies || []);
+        setHiringCompanies(data.job_recommendations?.company_recommendations || []);
       }
     } catch (error) {
       console.error('Error fetching hiring companies:', error);

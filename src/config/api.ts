@@ -12,29 +12,40 @@ export const API_CONFIG = {
     UPLOAD_TOR: '/api/users/upload-tor',
     DELETE_TOR: '/api/users/delete-tor',
     UPLOAD_CERTIFICATES: '/api/users/upload-certificates',
+    DELETE_CERTIFICATE: '/api/users/delete-certificate',
     EXTRACT_GRADES: '/api/users/extract-grades',
     
-    // Grades endpoints
-    GET_GRADES: '/api/grades/get',
-    UPDATE_GRADES: '/api/grades/update',
-    ADD_GRADE: '/api/grades/add',
-    DELETE_GRADE: '/api/grades/delete',
+    // OCR TOR endpoints (renamed from grades)
+    GET_GRADES: '/api/ocr-tor/get',
+    UPDATE_GRADES: '/api/ocr-tor/update',
+    ADD_GRADE: '/api/ocr-tor/add',
+    DELETE_GRADE: '/api/ocr-tor/delete',
     
-    // Certificate endpoints
-    EXTRACT_CERTIFICATE_TEXT: '/api/certificates/extract-text',
-    ANALYZE_CERTIFICATE: '/api/certificates/analyze',
-    ENHANCE_ANALYSIS: '/api/certificates/enhance-analysis',
+    // OCR Certificate endpoints (renamed from certificates)
+    EXTRACT_CERTIFICATE_TEXT: '/api/ocr-cert/extract-text',
+    ANALYZE_CERTIFICATE: '/api/ocr-cert/analyze',
+    ENHANCE_ANALYSIS: '/api/ocr-cert/enhance-analysis',
     
+    // Objective endpoints
+    OBJECTIVE_1_PROCESS: '/api/objective-1/process',
+    OBJECTIVE_1_PROCESS_CS: '/api/objective-1-cs/process',
+    OBJECTIVE_1_LATEST: '/api/objective-1/latest',
+    OBJECTIVE_1_SAVE: '/api/objective-1/save-results',
+    OBJECTIVE_1_CLEAR: '/api/objective-1/clear-results',
+    OBJECTIVE_1_CLEAR_CS: '/api/objective-1-cs/clear-results',
     
-    // Analysis endpoints
-    RECOMMENDED_SKILLS: '/api/analysis/recommended-skills',
-    COMPANIES_FOR_USER: '/api/analysis/companies-for-user',
-    CLEAR_ANALYSIS_RESULTS: '/api/analysis/clear-results',
+    OBJECTIVE_2_PROCESS: '/api/objective-2/process',
+    OBJECTIVE_2_SAVE: '/api/objective-2/save-results',
+    OBJECTIVE_2_CLEAR: '/api/objective-2/clear-results',
     
-    // Recommendation endpoints
-    COMPANY_RECOMMENDATIONS: '/api/recommendations/companies',
-    JOB_OPENINGS: '/api/recommendations/jobs',
-    COMPLETE_RECOMMENDATIONS: '/api/recommendations/complete',
+    OBJECTIVE_3_PROCESS: '/api/objective-3/process',
+    OBJECTIVE_3_SAVE: '/api/objective-3/save-results',
+    OBJECTIVE_3_CLEAR: '/api/objective-3/clear-results',
+    OBJECTIVE_3_PING: '/api/objective-3/gemini-ping',
+    
+    // Legacy endpoints for compatibility
+    COMPANY_RECOMMENDATIONS: '/api/objective-3/process',
+    COMPLETE_RECOMMENDATIONS: '/api/objective-3/process',
     
     // Dossier endpoints
     DOSSIER_GENERATE: '/api/dossier/generate',

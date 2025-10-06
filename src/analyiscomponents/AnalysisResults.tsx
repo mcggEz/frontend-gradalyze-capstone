@@ -1,5 +1,5 @@
 interface AnalysisResultsProps {
-  careerForecast: Record<string, number>;
+  careerForecast: Record<string, number> | string[];
   primaryArchetype: string;
   archetypePercents: {
     realistic?: number;
@@ -16,7 +16,7 @@ const AnalysisResults = ({
   careerForecast,
   primaryArchetype,
   archetypePercents,
-  existingTranscript
+
 }: AnalysisResultsProps) => {
   const archetypeInfo: Record<string, { title: string; indicators: string; roles: string }> = {
     realistic: {
@@ -56,24 +56,31 @@ const AnalysisResults = ({
       {/* Career Forecast */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mt-6">
         <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-semibold text-white">Career Forecast</h3></div>
-        {Object.keys(careerForecast || {}).length === 0 ? (
+        {Array.isArray(careerForecast) ? (
+          careerForecast.length === 0 ? (
+            <p className="text-sm text-gray-400">No forecast yet. Click "Process & Analyze" to compute your top jobs.</p>
+          ) : (
+            <div className="space-y-3">
+              {careerForecast.slice(0, 6).map((job, idx) => (
+                <div key={String(job)} className="bg-gray-900 border border-gray-700 rounded p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-300">{String(job).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                  </div>
+                  <div className="w-full bg-gray-700 h-2 rounded">
+                    <div className="bg-blue-600 h-2 rounded" style={{ width: `${Math.min(100, 100 - idx * 10)}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+        Object.keys(careerForecast || {}).length === 0 ? (
           <p className="text-sm text-gray-400">
             No forecast yet. Click "Process & Analyze" after providing grades to compute your career success scores.
           </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              'data_science',
-              'systems_engineering',
-              'software_engineering',
-              'ui_ux',
-              'product_management',
-              'cybersecurity',
-              'cloud_engineering',
-              'devops',
-              'business_analyst',
-              'project_manager',
-            ].map((k) => {
+            {Object.keys(careerForecast || {}).map((k) => {
               const v = (careerForecast as any)[k] ?? 0;
               const pct = Math.round((Number(v) || 0) * 100);
               const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -93,7 +100,7 @@ const AnalysisResults = ({
               );
             })}
           </div>
-        )}
+        ))}
       </div>
 
       {/* Archetype Summary */}

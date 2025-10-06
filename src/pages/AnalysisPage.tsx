@@ -53,6 +53,8 @@ const AnalysisPage = () => {
   const [grades, setGrades] = useState<GradeRow[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showGrades, setShowGrades] = useState(false);
+  const [itOrderIds, setItOrderIds] = useState<string[] | null>(null);
+  const [savedGradesCache, setSavedGradesCache] = useState<GradeRow[] | null>(null);
 
   // Track created blob URLs to revoke later
   const [blobUrls, setBlobUrls] = useState<string[]>([]);
@@ -63,7 +65,7 @@ const AnalysisPage = () => {
   const [archetypePercents, setArchetypePercents] = useState<{
     realistic?: number; investigative?: number; artistic?: number; social?: number; enterprising?: number; conventional?: number;
   }>({});
-  const [careerForecast, setCareerForecast] = useState<Record<string, number>>({});
+  const [careerForecast, setCareerForecast] = useState<Record<string, number> | string[]>({});
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -99,6 +101,68 @@ const AnalysisPage = () => {
       })
       .filter(r => r.subject && r.subject !== 'Unknown Subject');
   };
+
+  const extractGradeValuesInOrder = (grades: GradeRow[], course: string): number[] => {
+    // Prefer runtime-emitted order from table if available (ensures exact length/indexing)
+    const runtimeOrder = itOrderIds && itOrderIds.length > 0 ? itOrderIds : null;
+    const curriculumOrder = runtimeOrder || getCurriculumOrder(course);
+    
+    // Create a map of existing grades by unique ID
+    const gradesMap = new Map<string, number>();
+    grades.forEach(grade => {
+      if (grade.id && grade.grade !== undefined) {
+        gradesMap.set(grade.id, grade.grade);
+      }
+    });
+    
+    // Build fixed-length array with grade values in curriculum order
+    const gradeValues: number[] = [];
+    
+    curriculumOrder.forEach(uniqueId => {
+      const grade = gradesMap.get(uniqueId);
+      gradeValues.push(grade !== undefined ? grade : 0); // Use 0 for missing grades
+    });
+    
+    return gradeValues;
+  };
+
+  const getCurriculumOrder = (course: string): string[] => {
+    const courseLower = (course || '').toLowerCase();
+    
+    if (courseLower.includes('information technology')) {
+      return [
+        // 1st Year 1st Sem
+        'it_fy1_icc0101', 'it_fy1_icc0101_1', 'it_fy1_icc0102', 'it_fy1_icc0102_1', 'it_fy1_ipp0010', 'it_fy1_mmw0001', 'it_fy1_pcm0006', 'it_fy1_sts0002', 'it_fy1_aap0007', 'it_fy1_ped0001', 'it_fy1_nstp01',
+        // 1st Year 2nd Sem
+        'it_fy2_cet0111', 'it_fy2_cet0114', 'it_fy2_cet0114_1', 'it_fy2_eit0121', 'it_fy2_eit0121_1a', 'it_fy2_eit0122', 'it_fy2_eit0123', 'it_fy2_eit0123_1', 'it_fy2_gtb121', 'it_fy2_icc0103', 'it_fy2_icc0103_1', 'it_fy2_ped0013', 'it_fy2_nstp02',
+        // 2nd Year 1st Sem
+        'it_sy1_cet0121', 'it_sy1_cet0225', 'it_sy1_cet0225_1', 'it_sy1_eit0221', 'it_sy1_eit0221_1', 'it_sy1_eit0222', 'it_sy1_eit0222_1', 'it_sy1_eit0223', 'it_sy1_eit0223_1', 'it_sy1_eit0224', 'it_sy1_eit0224_1', 'it_sy1_eit0225', 'it_sy1_eit0225_1', 'it_sy1_eit0226', 'it_sy1_eit0226_1', 'it_sy1_eit0227', 'it_sy1_eit0227_1', 'it_sy1_ped0021',
+        // 2nd Year 2nd Sem
+        'it_sy2_eit0321', 'it_sy2_eit0321_1', 'it_sy2_eit0322', 'it_sy2_eit0322_1', 'it_sy2_eit0323', 'it_sy2_eit0323_1', 'it_sy2_eit0324', 'it_sy2_eit0324_1', 'it_sy2_eit0325', 'it_sy2_eit0325_1', 'it_sy2_eit0326', 'it_sy2_eit0326_1', 'it_sy2_eit0327', 'it_sy2_eit0327_1', 'it_sy2_eit0328', 'it_sy2_eit0328_1', 'it_sy2_ped0031',
+        // 3rd Year 1st Sem
+        'it_ty1_eit0421', 'it_ty1_eit0421_1', 'it_ty1_eit0422', 'it_ty1_eit0422_1', 'it_ty1_eit0423', 'it_ty1_eit0423_1', 'it_ty1_eit0424', 'it_ty1_eit0424_1', 'it_ty1_eit0425', 'it_ty1_eit0425_1', 'it_ty1_eit0426', 'it_ty1_eit0426_1', 'it_ty1_eit0427', 'it_ty1_eit0427_1', 'it_ty1_eit0428', 'it_ty1_eit0428_1', 'it_ty1_ped0041',
+        // 3rd Year 2nd Sem
+        'it_ty2_eit0521', 'it_ty2_eit0521_1', 'it_ty2_eit0522', 'it_ty2_eit0522_1', 'it_ty2_eit0523', 'it_ty2_eit0523_1', 'it_ty2_eit0524', 'it_ty2_eit0524_1', 'it_ty2_eit0525', 'it_ty2_eit0525_1', 'it_ty2_eit0526', 'it_ty2_eit0526_1', 'it_ty2_eit0527', 'it_ty2_eit0527_1', 'it_ty2_eit0528', 'it_ty2_eit0528_1', 'it_ty2_ped0051',
+        // 4th Year 1st Sem
+        'it_fy1_eit0621', 'it_fy1_eit0621_1', 'it_fy1_eit0622', 'it_fy1_eit0622_1', 'it_fy1_eit0623', 'it_fy1_eit0623_1', 'it_fy1_eit0624', 'it_fy1_eit0624_1', 'it_fy1_eit0625', 'it_fy1_eit0625_1', 'it_fy1_eit0626', 'it_fy1_eit0626_1', 'it_fy1_eit0627', 'it_fy1_eit0627_1', 'it_fy1_eit0628', 'it_fy1_eit0628_1', 'it_fy1_ped0061',
+        // 4th Year 2nd Sem
+        'it_fy2_eit0721', 'it_fy2_eit0721_1', 'it_fy2_eit0722', 'it_fy2_eit0722_1', 'it_fy2_eit0723', 'it_fy2_eit0723_1', 'it_fy2_eit0724', 'it_fy2_eit0724_1', 'it_fy2_eit0725', 'it_fy2_eit0725_1', 'it_fy2_eit0726', 'it_fy2_eit0726_1', 'it_fy2_eit0727', 'it_fy2_eit0727_1', 'it_fy2_eit0728', 'it_fy2_eit0728_1', 'it_fy2_ped0071',
+        // 4th Year 2nd Sem (Additional)
+        'it_fy2_eit_elective1', 'it_fy2_eit_elective2', 'it_fy2_eit_elective3', 'it_fy2_eit_elective4', 'it_fy2_eit_elective5', 'it_fy2_eit_elective6',
+        // 4th Year 2nd Sem (Final)
+        'iip0101a', 'iip0101_1'
+      ];
+    } else if (courseLower.includes('computer science')) {
+      return [
+        // CS curriculum would go here with similar structure
+        // For now, return empty array
+      ];
+    }
+    
+    // Return empty array if course not recognized
+    return [];
+  };
+
 
   const fetchProfile = async (email: string) => {
     try {
@@ -241,6 +305,41 @@ const AnalysisPage = () => {
         enterprising: typeof data.archetype_enterprising_percentage === 'number' ? data.archetype_enterprising_percentage : undefined,
         conventional: typeof data.archetype_conventional_percentage === 'number' ? data.archetype_conventional_percentage : undefined,
       });
+
+      let setForecast = false;
+      // Capture career top jobs array if present; if scores exist, build map for percentages
+      if (Array.isArray(data.career_top_jobs)) {
+        if (Array.isArray(data.career_top_jobs_scores) && data.career_top_jobs_scores.length === data.career_top_jobs.length) {
+          const map: Record<string, number> = {};
+          data.career_top_jobs.forEach((label: string, i: number) => {
+            map[label] = data.career_top_jobs_scores[i];
+          });
+          setCareerForecast(map);
+          setForecast = true;
+        } else {
+          setCareerForecast(data.career_top_jobs);
+          setForecast = true;
+        }
+      }
+
+      // Fallback: fetch latest Objective 1 if profile does not include forecast
+      if (!setForecast && typeof data?.email === 'string' && data.email) {
+        try {
+          const latest = await fetch(`${getApiUrl('OBJECTIVE_1_LATEST')}?email=${encodeURIComponent(data.email)}`);
+          if (latest.ok) {
+            const latestJson = await latest.json();
+            if (Array.isArray(latestJson.career_top_jobs)) {
+              if (Array.isArray(latestJson.career_top_jobs_scores) && latestJson.career_top_jobs_scores.length === latestJson.career_top_jobs.length) {
+                const map: Record<string, number> = {};
+                latestJson.career_top_jobs.forEach((label: string, i: number) => { map[label] = latestJson.career_top_jobs_scores[i]; });
+                setCareerForecast(map);
+              } else {
+                setCareerForecast(latestJson.career_top_jobs);
+              }
+            }
+          }
+        } catch {}
+      }
     } catch (e) {
       console.error(e);
       // Clear UI to reflect unknown/empty state rather than showing stale items
@@ -258,6 +357,40 @@ const AnalysisPage = () => {
       grade: parseFloat(grade.grade.toFixed(2))
     })));
   };
+
+  // Fetch saved grades from backend and render to table
+  const fetchSavedGrades = async (uid: number, course: string) => {
+    try {
+      if (!uid) return;
+      const saved = await gradesService.getUserGrades(uid);
+      if (Array.isArray(saved) && saved.length > 0) {
+        setSavedGradesCache(saved);
+        // Do not auto-open the table; keep it hidden until the user clicks
+      }
+    } catch (e) {
+      console.warn('Failed to fetch saved grades', e);
+    }
+  };
+
+  // When user is known, load saved grades
+  useEffect(() => {
+    if (user?.id) {
+      fetchSavedGrades(user.id, user.course);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // When table order is known and we have cached grades, prefill the selects
+  useEffect(() => {
+    if (!savedGradesCache || !itOrderIds || itOrderIds.length === 0) return;
+    const arr = extractGradeValuesInOrder(savedGradesCache, user.course);
+    setPrefill(arr.map(n => parseFloat(Number(n).toFixed(2))));
+    // Also reflect rows state so analysis/persistence functions have data
+    setGrades(savedGradesCache);
+    // apply once
+    setSavedGradesCache(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itOrderIds, savedGradesCache]);
 
   const [prefill, setPrefill] = useState<number[]>([]);
   const handleGradesExtracted = (extractedGrades: any[]) => {
@@ -326,26 +459,87 @@ const AnalysisPage = () => {
         console.warn('Failed to save grades before analysis', e);
       }
 
-      // Send grades to backend to compute Obj1 & Obj2 and persist
-      const resp = await fetch(`${API_CONFIG.BASE_URL}/api/analysis/process`, {
+      // Call all three objectives individually
+      console.log('Processing all three objectives...');
+      
+      // Extract just the grade values in curriculum order
+      const gradeValuesArray = extractGradeValuesInOrder(grades, user.course);
+      
+      // Log the grades array being sent to backend
+      console.log('=== GRADES ARRAY BEING SENT TO BACKEND ===');
+      console.log('Original grades from table:', grades.length);
+      console.log('Grade values array length:', gradeValuesArray.length);
+      console.log('Grade values array:', gradeValuesArray);
+      console.log('=== END GRADES ARRAY ===');
+
+       // Objective 1: Career Forecasting
+      const isCS = ((user.course || '').toLowerCase().includes('computer science'));
+      const obj1Endpoint = isCS ? 'OBJECTIVE_1_PROCESS_CS' : 'OBJECTIVE_1_PROCESS';
+      const obj1Resp = await fetch(getApiUrl(obj1Endpoint as any), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, grades })
+        body: JSON.stringify({ email: user.email, grades: gradeValuesArray })
       });
       
-      if (!resp.ok) {
-        const e = await resp.json().catch(() => ({}));
-        throw new Error(e.message || 'Failed to process analysis');
+      if (!obj1Resp.ok) {
+        const e = await obj1Resp.json().catch(() => ({}));
+        throw new Error(e.message || 'Failed to process career forecasting');
       }
       
-      const result = await resp.json();
-      console.log('Analysis processing result:', result);
+      const obj1Result = await obj1Resp.json();
+      console.log('Objective 1 (Career Forecasting) result:', obj1Result);
       
-      // Refresh profile to get updated data
+      // Update career forecast state with results (supports array or map)
+      if (Array.isArray(obj1Result.career_top_jobs)) {
+        // If backend also provided scores, build a map for percentage bars
+        if (Array.isArray(obj1Result.career_top_jobs_scores) && obj1Result.career_top_jobs_scores.length === obj1Result.career_top_jobs.length) {
+          const map: Record<string, number> = {};
+          obj1Result.career_top_jobs.forEach((label: string, i: number) => {
+            map[label] = obj1Result.career_top_jobs_scores[i];
+          });
+          setCareerForecast(map);
+        } else {
+          setCareerForecast(obj1Result.career_top_jobs);
+        }
+        console.log('Updated top jobs:', obj1Result.career_top_jobs);
+      } else if (obj1Result.career_forecast) {
+        setCareerForecast(obj1Result.career_forecast);
+        console.log('Updated career forecast:', obj1Result.career_forecast);
+      }
+      
+      // Objective 2: RIASEC Archetype Analysis
+      const obj2Resp = await fetch(getApiUrl('OBJECTIVE_2_PROCESS'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, grades: gradeValuesArray, order_ids: itOrderIds || [] })
+      });
+      
+      if (!obj2Resp.ok) {
+        const e = await obj2Resp.json().catch(() => ({}));
+        throw new Error(e.message || 'Failed to process archetype analysis');
+      }
+      
+      const obj2Result = await obj2Resp.json();
+      console.log('Objective 2 (RIASEC Archetype) result:', obj2Result);
+      
+      // Update archetype state with results
+      if (obj2Result.archetype_analysis) {
+        const archetypeData = obj2Result.archetype_analysis;
+        if (archetypeData.primary_archetype) {
+          setPrimaryArchetype(archetypeData.primary_archetype);
+        }
+        if (archetypeData.archetype_percentages) {
+          setArchetypePercents(archetypeData.archetype_percentages);
+        }
+        console.log('Updated archetype data:', archetypeData);
+      }
+      
+      // Skip Objective 3 here; Dashboard will trigger recommendations when needed
+      
+      // Refresh profile to get updated data (including top jobs)
       await fetchProfile(user.email);
       
-      // Show success message
-      alert('Analysis completed successfully! You can now view your results in the Dashboard or Dossier page.');
+      // No modal alerts; UI is updated inline via state and profile refresh
       
     } catch (e: any) {
       console.error('Processing error:', e);
@@ -358,13 +552,37 @@ const AnalysisPage = () => {
   const clearAnalysisResults = async () => {
     try {
       if (!user.email) { alert('Missing user email'); return; }
-      const res = await fetch(getApiUrl('CLEAR_ANALYSIS_RESULTS'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email })
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || 'Failed to clear results');
+      
+      // Clear all three objectives
+      console.log('Clearing all three objectives...');
+      
+      const isCS = ((user.course || '').toLowerCase().includes('computer science'));
+      const obj1ClearEndpoint = isCS ? 'OBJECTIVE_1_CLEAR_CS' : 'OBJECTIVE_1_CLEAR';
+      const clearPromises = [
+        fetch(getApiUrl(obj1ClearEndpoint as any), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email })
+        }),
+        fetch(getApiUrl('OBJECTIVE_2_CLEAR'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email })
+        }),
+        fetch(getApiUrl('OBJECTIVE_3_CLEAR'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email })
+        })
+      ];
+      
+      const results = await Promise.all(clearPromises);
+      const errors = results.filter(res => !res.ok);
+      
+      if (errors.length > 0) {
+        throw new Error('Failed to clear some analysis results');
+      }
+      
       // Reset local UI
       setCareerForecast({});
       setPrimaryArchetype('');
@@ -450,9 +668,9 @@ const AnalysisPage = () => {
               {/* Grades Table */}
                 {showGrades && (
                 ((user.course || '').toLowerCase().includes('information technology')) ? (
-                  <ITStaticTable grades={grades} onGradesChange={setGrades} isProcessing={isProcessing} prefillGrades={prefill} />
+                  <ITStaticTable grades={grades} onGradesChange={setGrades} isProcessing={isProcessing} prefillGrades={prefill} onEmitOrder={setItOrderIds} />
                 ) : ((user.course || '').toLowerCase().includes('computer science')) ? (
-                  <CStaticTable grades={grades} onGradesChange={setGrades} isProcessing={isProcessing} prefillGrades={prefill} />
+                  <CStaticTable grades={grades} onGradesChange={setGrades} isProcessing={isProcessing} prefillGrades={prefill} onEmitOrder={setItOrderIds} />
                 ) : (
                   <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 text-center text-gray-400">
                     Program table unavailable. Set your course to Information Technology or Computer Science to view the curriculum table.
@@ -471,6 +689,7 @@ const AnalysisPage = () => {
                 user={user}
                 blobUrls={blobUrls}
                 onBlobUrlAdd={handleBlobUrlAdd}
+                onRefreshProfile={() => fetchProfile(user.email)}
               />
 
               {/* Analysis Results */}

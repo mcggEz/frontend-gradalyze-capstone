@@ -47,22 +47,15 @@ const TranscriptUpload = ({
     
     try {
       setIsUploading(true);
-      const stored = localStorage.getItem('user');
-      const parsed = stored ? (() => { try { return JSON.parse(stored); } catch { return null; } })() : null;
-      const userId = typeof parsed?.id === 'number' ? parsed.id : undefined;
-
       const form = new FormData();
       form.append('email', user.email);
-      if (userId !== undefined) form.append('user_id', String(userId));
-      form.append('kind', 'tor');
       form.append('file', file, file.name);
 
       console.log('[TOR_UPLOAD] posting', { name: file.name, type: file.type, size: file.size });
       const up = await fetch(getApiUrl('UPLOAD_TOR'), { method: 'POST', body: form });
-      const torText = await up.text();
-      let j: any = {}; try { j = torText ? JSON.parse(torText) : {}; } catch {}
-      console.log('[TOR_UPLOAD] response', { status: up.status, ok: up.ok, body: j || torText });
-      if (!up.ok) throw new Error((j && j.message) || `Upload failed with status ${up.status}`);
+      let j: any = {}; try { j = await up.json(); } catch { j = {}; }
+      console.log('[TOR_UPLOAD] response', { status: up.status, ok: up.ok, body: j });
+      if (!up.ok) throw new Error((j && j.error) || (j && j.message) || `Upload failed with status ${up.status}`);
 
       // Replace temp preview with persisted URL and clear temp flag
       if (j?.url || j?.storage_path) {
@@ -134,19 +127,6 @@ const TranscriptUpload = ({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <label htmlFor="reupload-tor" className="px-3 py-1.5 rounded bg-gray-700 hover:bg-gray-600 text-sm cursor-pointer inline-flex items-center gap-2">
-                <span>Replace File</span>
-              </label>
-              <input 
-                id="reupload-tor" 
-                type="file" 
-                accept=".pdf" 
-                className="hidden" 
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUploadTranscript(f);
-                }} 
-              />
               <button onClick={handleDeleteTranscript} className="px-2.5 py-1.5 rounded bg-red-700 hover:bg-red-600 text-sm">
                 Remove
               </button>
