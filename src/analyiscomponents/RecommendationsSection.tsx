@@ -23,6 +23,7 @@ const RecommendationsSection = ({ userEmail }: Props) => {
   const [companies, setCompanies] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<any | null>(null);
   // Gemini ping removed; not used in Objective 3 anymore
 
   useEffect(() => {
@@ -65,6 +66,15 @@ const RecommendationsSection = ({ userEmail }: Props) => {
       isMounted = false;
     };
   }, [userEmail]);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (selected) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [selected]);
 
   return (
     <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
@@ -117,7 +127,11 @@ const RecommendationsSection = ({ userEmail }: Props) => {
       ) : (
         <ul className="space-y-4">
           {companies.map((rec: any, idx) => (
-            <li key={rec.id ?? idx} className="border border-gray-800 rounded-md p-4 hover:border-gray-700 transition-colors flex items-start gap-4">
+            <li
+              key={rec.id ?? idx}
+              className="border border-gray-800 rounded-md p-4 hover:border-gray-700 transition-colors flex items-start gap-4 cursor-pointer"
+              onClick={() => setSelected(rec)}
+            >
               <div className="w-12 h-12 rounded bg-gray-800 flex items-center justify-center overflow-hidden">
                 {rec.logo_url ? (
                   <img
@@ -139,9 +153,7 @@ const RecommendationsSection = ({ userEmail }: Props) => {
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-gray-100">{rec.title}</p>
                   {rec.location && <span className="text-xs text-gray-400">• {rec.location}</span>}
-                  {typeof rec.score === 'number' && (
-                    <span className="ml-auto text-xs px-2 py-0.5 rounded bg-blue-500/20 border border-blue-500/30 text-blue-300">Score {Number(rec.score).toFixed(2)}</span>
-                  )}
+                  {/* score hidden as requested */}
                 </div>
                 {(rec.industry || rec.company_size) && (
                   <p className="text-gray-400 text-xs mt-1">
@@ -169,15 +181,76 @@ const RecommendationsSection = ({ userEmail }: Props) => {
                 )}
                 {rec.description && <p className="text-gray-300 text-sm mt-2 leading-relaxed">{rec.description}</p>}
                 {rec.url && (
-                  <a href={rec.url} target="_blank" rel="noreferrer" className="text-blue-400 text-sm mt-2 inline-block">Visit site</a>
+                  <a href={rec.url} target="_blank" rel="noreferrer" className="text-blue-400 text-sm mt-2 inline-block" onClick={(e)=>e.stopPropagation()}>Visit site</a>
                 )}
                 {rec.linkedin_url && (
-                  <a href={rec.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-400 text-sm mt-2 inline-block ml-3">LinkedIn</a>
+                  <a href={rec.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-400 text-sm mt-2 inline-block ml-3" onClick={(e)=>e.stopPropagation()}>LinkedIn</a>
                 )}
               </div>
             </li>
           ))}
         </ul>
+      )}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={()=>setSelected(null)} />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl max-w-3xl w-full mx-4 p-10 shadow-2xl">
+            <button
+              aria-label="Close"
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-300 text-lg"
+              onClick={()=>setSelected(null)}
+            >
+              ×
+            </button>
+            <div className="flex items-start gap-5">
+              <div className="w-16 h-16 rounded bg-gray-800 flex items-center justify-center overflow-hidden">
+                {selected.logo_url ? (
+                  <img
+                    src={selected.logo_url}
+                    alt={selected.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const el = e.currentTarget as HTMLImageElement;
+                      el.style.display = 'none';
+                      const parent = el.parentElement;
+                      if (parent) parent.innerHTML = `<span class='text-gray-300 text-sm font-semibold'>${getInitials(selected.title)}</span>`;
+                    }}
+                  />
+                ) : (
+                  <span className="text-gray-300 text-lg font-semibold">{getInitials(selected.title)}</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <h4 className="text-3xl font-bold text-white">{selected.title}</h4>
+                {(selected.location || selected.industry || selected.company_size) && (
+                  <p className="text-base text-gray-400 mt-1">
+                    {selected.location && <span>{selected.location}</span>}
+                    {(selected.location && (selected.industry || selected.company_size)) && <span> • </span>}
+                    {selected.industry && <span>{selected.industry}</span>}
+                    {selected.industry && selected.company_size && <span> • </span>}
+                    {selected.company_size && <span>{selected.company_size}</span>}
+                  </p>
+                )}
+                {selected.roles && Array.isArray(selected.roles) && selected.roles.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2.5">
+                    {selected.roles.slice(0, 10).map((r: string) => (
+                      <span key={r} className="text-base px-3.5 py-1.5 rounded bg-gray-800 border border-gray-700 text-gray-200">{r}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {selected.description && <p className="text-gray-200 text-lg mt-6 leading-relaxed">{selected.description}</p>}
+            <div className="mt-6">
+              {selected.url && (
+                <a href={selected.url} target="_blank" rel="noreferrer" className="text-blue-400 text-lg mr-6">Visit site</a>
+              )}
+              {selected.linkedin_url && (
+                <a href={selected.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-400 text-lg">LinkedIn</a>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
