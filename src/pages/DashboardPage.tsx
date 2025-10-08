@@ -7,6 +7,7 @@ import RecommendationsSection from '../analyiscomponents/RecommendationsSection.
 const DashboardPage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState({
+    id: 0 as number,
     name: '',
     email: '',
     course: '',
@@ -71,6 +72,8 @@ const DashboardPage = () => {
       const response = await fetch(`${getApiUrl('PROFILE_BY_EMAIL')}?email=${encodeURIComponent(email)}`);
       if (response.ok) {
         const data = await response.json();
+        // store id for account actions
+        setUser((prev:any) => ({ ...prev, id: typeof data.id === 'number' ? data.id : prev.id }));
         
         // Check if we have any archetype data
         const hasArchetypeData = data.archetype_realistic_percentage || 
@@ -140,6 +143,36 @@ const DashboardPage = () => {
   // User archetype data
   const [userArchetype, setUserArchetype] = useState<any>(null);
   const [archetypeLoading, setArchetypeLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const performDelete = async () => {
+    if (!user?.id) { setDeleteError('User id not found'); return; }
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+      const token = localStorage.getItem('auth_token') || '';
+      const res = await fetch(`${getApiUrl('USERS')}/${user.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      const text = await res.text();
+      let j:any = {}; try { j = text ? JSON.parse(text) : {}; } catch {}
+      if (!res.ok) throw new Error(j?.message || j?.error || `Delete failed (${res.status})`);
+      // Clear client session and redirect
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      navigate('/login');
+    } catch (e:any) {
+      setDeleteError(e?.message || 'Failed to delete account');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
 
   return (
@@ -550,7 +583,7 @@ const DashboardPage = () => {
                     <button className="w-full text-left px-4 py-3 bg-gray-800 hover:bg-gray-700 rounded-md transition-colors">
                       Reset Recommendations
                     </button>
-                    <button className="w-full text-left px-4 py-3 bg-red-900 hover:bg-red-800 text-red-300 rounded-md transition-colors">
+                    <button className="w-full text-left px-4 py-3 bg-red-900 hover:bg-red-800 text-red-300 rounded-md transition-colors" onClick={() => setShowDeleteModal(true)}>
                       Delete Account
                     </button>
                   </div>
@@ -560,6 +593,22 @@ const DashboardPage = () => {
           </div>
         )}
       </main>
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70" onClick={()=>!deleting && setShowDeleteModal(false)} />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-xl font-bold text-white mb-2">Delete account?</h3>
+            <p className="text-gray-300 text-sm mb-4">This action is permanent. Your profile, grades, certificates, and saved analysis will be removed. You will be signed out.</p>
+            {deleteError && <p className="text-red-400 text-sm mb-3">{deleteError}</p>}
+            <div className="flex justify-end gap-3">
+              <button className="px-4 py-2 rounded bg-gray-800 hover:bg-gray-700" disabled={deleting} onClick={()=>setShowDeleteModal(false)}>Cancel</button>
+              <button className={`px-4 py-2 rounded ${deleting ? 'bg-red-800' : 'bg-red-700 hover:bg-red-600'} text-white`} onClick={performDelete} disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
