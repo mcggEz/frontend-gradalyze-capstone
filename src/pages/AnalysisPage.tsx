@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { getApiUrl, API_CONFIG } from '../config/api';
 import { gradesService } from '../services/gradesService';
 import TranscriptUpload from '../analyiscomponents/TranscriptUpload';
-import CertificatesUpload from '../analyiscomponents/CertificatesUpload';
 import AnalysisResults from '../analyiscomponents/AnalysisResults';
 import ProcessButton from '../analyiscomponents/ProcessButton';
 import ITStaticTable from '../analyiscomponents/ITStaticTable';
@@ -394,14 +393,38 @@ const AnalysisPage = () => {
 
   const [prefill, setPrefill] = useState<number[]>([]);
   const handleGradesExtracted = (extractedGrades: any[]) => {
-    // Expect numeric array; store for table prefill and also build rows for persistence/analysis
-    if (Array.isArray(extractedGrades) && extractedGrades.every(g => typeof g === 'number')) {
-      console.log('[OCR] handling grades for prefill:', extractedGrades);
-      setPrefill(extractedGrades.map(n => parseFloat(Number(n).toFixed(2))));
+    console.log('[OCR] handling grades for prefill:', extractedGrades);
+    
+    if (Array.isArray(extractedGrades) && extractedGrades.length > 0) {
+      // Check if it's structured grade objects (new format)
+      if (extractedGrades[0] && typeof extractedGrades[0] === 'object' && extractedGrades[0].grade) {
+        console.log('[OCR] Structured grades detected, converting to numeric array');
+        const numericGrades = extractedGrades.map(g => parseFloat(g.grade));
+        setPrefill(numericGrades.map(n => parseFloat(Number(n).toFixed(2))));
+        
+        // Also populate the grades table with the structured data
+        const gradeRows = extractedGrades.map((g, index) => ({
+          id: g.id || `G-${index + 1}`,
+          subject: g.subject || `Subject ${index + 1}`,
+          courseCode: g.courseCode || '',
+          units: g.units || 3,
+          grade: parseFloat(g.grade),
+          semester: g.semester || ''
+        }));
+        setGrades(gradeRows);
+        console.log('[OCR] Populated grades table with', gradeRows.length, 'courses');
+      } 
+      // Check if it's numeric array (old format)
+      else if (extractedGrades.every(g => typeof g === 'number')) {
+        console.log('[OCR] Numeric grades detected');
+        setPrefill(extractedGrades.map(n => parseFloat(Number(n).toFixed(2))));
+        setGrades(normalizeToRows([])); // rows will be created by table change handlers upon prefill
+      }
     }
-    setGrades(normalizeToRows([])); // rows will be created by table change handlers upon prefill
     setShowGrades(true);
   };
+
+  // Removed parseOcrText function - just focus on console logging
 
   const handleBlobUrlAdd = (url: string) => {
     setBlobUrls(prev => [...prev, url]);
@@ -431,22 +454,11 @@ const AnalysisPage = () => {
         return;
       }
 
-      // If a TOR exists and no grades are present, run OCR first
-      if ((existingTranscript?.storagePath || existingTranscript?.url) && grades.length === 0) {
-        const sp = existingTranscript?.storagePath;
-        if (sp && user.email) {
-          const ocr = await fetch(getApiUrl('EXTRACT_GRADES'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: user.email, storage_path: sp })
-          });
-          const ocrJson = await ocr.json().catch(() => ({}));
-          if (Array.isArray(ocrJson?.grades)) {
-            setGrades(normalizeToRows(ocrJson.grades));
-            // Ensure all grades are properly formatted
-            setTimeout(() => formatAllGrades(), 100);
-          }
-        }
+      // OCR should have been done during transcript upload
+      // If no grades are present, user needs to re-upload transcript
+      if (grades.length === 0) {
+        alert('No grades found. Please upload your transcript again to extract grades.');
+        return;
       }
 
       // Persist grades array immediately before analysis
@@ -652,6 +664,7 @@ const AnalysisPage = () => {
                 onBlobUrlAdd={handleBlobUrlAdd}
                 tempTranscriptSizeKB={tempTranscriptSizeKB}
                 onTempSizeChange={setTempTranscriptSizeKB}
+                // parseOcrText prop removed - just console log
               />
 
               {/* Program Table Toggle */}
@@ -682,15 +695,8 @@ const AnalysisPage = () => {
             
 
               {/* Certificates Upload */}
-              <CertificatesUpload
-                existingCertificates={existingCertificates}
-                onCertificatesChange={setExistingCertificates}
-                onCertificateAnalysesChange={setCertificateAnalyses}
-                user={user}
-                blobUrls={blobUrls}
-                onBlobUrlAdd={handleBlobUrlAdd}
-                onRefreshProfile={() => fetchProfile(user.email)}
-              />
+       
+       
 
               {/* Analysis Results */}
               <AnalysisResults

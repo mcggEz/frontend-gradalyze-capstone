@@ -16,6 +16,7 @@ export const API_CONFIG = {
     EXTRACT_GRADES: '/api/users/extract-grades',
     
     // OCR TOR endpoints (renamed from grades)
+    OCR_TOR_PROCESS: '/api/ocr-tor/process',
     GET_GRADES: '/api/ocr-tor/get',
     UPDATE_GRADES: '/api/ocr-tor/update',
     ADD_GRADE: '/api/ocr-tor/add',

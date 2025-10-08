@@ -18,6 +18,7 @@ interface TranscriptUploadProps {
   onBlobUrlAdd: (url: string) => void;
   tempTranscriptSizeKB: number | null;
   onTempSizeChange: (size: number | null) => void;
+  // parseOcrText prop removed - just console log
 }
 
 const TranscriptUpload = ({
@@ -27,9 +28,11 @@ const TranscriptUpload = ({
   user,
   onBlobUrlAdd,
   tempTranscriptSizeKB,
-  onTempSizeChange
+  onTempSizeChange,
+  // parseOcrText // Removed
 }: TranscriptUploadProps) => {
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState('');
 
   const handleUploadTranscript = async (file: File) => {
     if (!user.email) return alert('Please sign in again.');
@@ -37,6 +40,7 @@ const TranscriptUpload = ({
     if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
       return alert('Please select a PDF file for transcript upload.');
     }
+
 
     // Optimistic preview (Open via blob URL)
     const tempUrl = URL.createObjectURL(file);
@@ -47,6 +51,11 @@ const TranscriptUpload = ({
     
     try {
       setIsUploading(true);
+      
+      // Stage 1: Uploading file
+      setUploadStage('Gradalyze is thinking... Uploading TOR...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       const form = new FormData();
       form.append('email', user.email);
       form.append('file', file, file.name);
@@ -62,27 +71,54 @@ const TranscriptUpload = ({
         onTranscriptChange({ hasFile: true, fileName: file.name, url: j.url || tempUrl, storagePath: j.storage_path });
       }
 
-      // Run OCR after upload to populate grades, but DO NOT run full analysis here
+      // Stage 2: Processing with OCR
       if (j.storage_path && user.email) {
-        const ocr = await fetch(getApiUrl('EXTRACT_GRADES'), {
+        setUploadStage('Gradalyze is thinking... Analyzing document structure...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        setUploadStage('Gradalyze is thinking... Applying advanced OCR...');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        setUploadStage('Gradalyze is thinking... Extracting course and grade data...');
+        
+        // Create a new FormData for the OCR TOR endpoint
+        const ocrForm = new FormData();
+        ocrForm.append('file', file, file.name);
+        
+        const ocr = await fetch(getApiUrl('OCR_TOR_PROCESS'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: user.email, storage_path: j.storage_path })
+          body: ocrForm
         });
         const ocrJson = await ocr.json().catch(() => ({}));
-        if (Array.isArray(ocrJson?.grades)) {
-          console.log('[OCR] grades array received:', ocrJson.grades);
-          onGradesExtracted(ocrJson.grades);
+        
+        if (Array.isArray(ocrJson?.grade_values)) {
+          console.log('[OCR] Grade values array received:', ocrJson.grade_values);
+          console.log('[OCR] Grades array:', ocrJson.grade_values);
+          onGradesExtracted(ocrJson.grade_values);
+        } else {
+          console.log('[OCR] No grade values found in response:', ocrJson);
         }
+        
+        // Log full text for debugging
+        if (ocrJson?.full_text) {
+          console.log('[OCR] Full text extracted from PDF:');
+          console.log('[OCR] Text length:', ocrJson.full_text.length, 'characters');
+          console.log('[OCR] Complete text:', ocrJson.full_text);
+        }
+        
+        setUploadStage('Gradalyze is done! Processing complete.');
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       onTempSizeChange(null);
     } catch (e: any) {
+      setUploadStage('Gradalyze encountered an error. Upload failed.');
       alert(`❌ Upload failed: ${e.message || 'Unknown error'}`);
       onTranscriptChange(prevTranscript || { hasFile: false });
       onTempSizeChange(null);
     } finally {
       setIsUploading(false);
+      setUploadStage('');
     }
   };
 
@@ -156,7 +192,24 @@ const TranscriptUpload = ({
           </div>
         )}
         {(existingTranscript?._temp || isUploading) && (
-          <p className="text-xs text-gray-300 mt-3">Uploading…</p>
+          <div className="mt-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+            <div className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-3"></div>
+              <div className="text-center">
+                <div className="text-sm font-medium text-white">
+                  {uploadStage || 'Gradalyze is thinking...'}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {uploadStage.includes('Uploading') && 'Please wait while we securely upload your transcript.'}
+                  {uploadStage.includes('Analyzing') && 'Examining the document structure and content for processing.'}
+                  {uploadStage.includes('OCR') && 'Utilizing AI to read and extract text from your PDF document.'}
+                  {uploadStage.includes('Extracting') && 'Parsing through the text to identify course information and grades.'}
+                  {uploadStage.includes('complete') && 'All done! Your transcript has been processed.'}
+                  {uploadStage.includes('error') && 'Oops! Something went wrong during the process. Please try again.'}
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
